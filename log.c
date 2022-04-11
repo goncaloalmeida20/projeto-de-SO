@@ -1,8 +1,16 @@
 #include <stdlib.h>
+#include <time.h>
 #include "log.h"
 
 
 int log_write(char *s){
+	//get current time
+	time_t t = time(NULL);
+	struct tm *time_now = localtime(&t);
+
+	//write message on the console
+	printf("%02d:%02d:%02d %s\n", time_now->tm_hour, time_now->tm_min, time_now->tm_sec, s);
+
 	//open log file
 	FILE *f = fopen("log.txt", "a");
 	if(f == NULL){
@@ -10,8 +18,8 @@ int log_write(char *s){
 		return -1;
 	}
 	
-	//write message
-	fprintf(f, "%s\n", s);
+	//write message in the file
+	fprintf("%02d:%02d:%02d %s\n", time_now->tm_hour, time_now->tm_min, time_now->tm_sec, s);
 	
 	//close file
 	fclose(f);
