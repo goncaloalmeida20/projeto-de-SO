@@ -24,19 +24,16 @@ config_data read_file(FILE *fp){
         fseek(fp, pos, SEEK_SET);
 
         fscanf_s(fp,"%d", &configData->max_wait);
-        fflush(fp);
         pos = ftell(fp);
         fseek(fp, pos, SEEK_SET);
 
         fscanf_s(fp,"%d", &configData->edge_server_number);
-        fflush(fp);
         pos = ftell(fp);
         fseek(fp, pos, SEEK_SET);
 
         if(configData->edge_server_number >= 2){
             for(; i < configData->edge_server_number; i++){
                 fscanf_s(fp,"%s,%d,%d", &edgeServer->name, &edgeServer->processing_capacity_min, &edgeServer->processing_capacity_max);
-                fflush(fp);
                 pos = ftell(fp);
                 fseek(fp, pos, SEEK_SET);
                 edgeServer = edgeServer->next;
