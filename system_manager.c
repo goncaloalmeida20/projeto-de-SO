@@ -13,29 +13,21 @@ typedef struct _edge_server{
 }edge_server;
 
 config_data read_file(FILE *fp){
-    long pos;
     int i = 0;
     config_data *configData = (config_data *) malloc(sizeof(config_data));
     edge_server *edgeServer = (edge_server *) malloc(sizeof(edge_server));
 
     if (fp != NULL){
         fscanf_s(fp,"%d", &configData->queue_pos);
-        pos = ftell(fp);
-        fseek(fp, pos, SEEK_SET);
 
         fscanf_s(fp,"%d", &configData->max_wait);
-        pos = ftell(fp);
-        fseek(fp, pos, SEEK_SET);
 
         fscanf_s(fp,"%d", &configData->edge_server_number);
-        pos = ftell(fp);
-        fseek(fp, pos, SEEK_SET);
+
 
         if(configData->edge_server_number >= 2){
             for(; i < configData->edge_server_number; i++){
                 fscanf_s(fp,"%s,%d,%d", &edgeServer->name, &edgeServer->processing_capacity_min, &edgeServer->processing_capacity_max);
-                pos = ftell(fp);
-                fseek(fp, pos, SEEK_SET);
                 edgeServer = edgeServer->next;
             }
         }
