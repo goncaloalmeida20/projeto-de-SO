@@ -22,12 +22,12 @@ int create_shm(){
 	//attach shared memory
 	if((shared_var = (SharedMemory*)shmat(shmid, NULL, 0) == (SharedMemory*)-1)
 		log_write("Error attaching shared memory");
-		return -2;
+		return -1;
 	}
 	
 	if(create_semaphore() < 0){
 		log_write("Error creating semaphore");
-		return -3;
+		return -1;
 	}
 	
 	return 0;
