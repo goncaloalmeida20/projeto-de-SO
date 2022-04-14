@@ -25,6 +25,7 @@ int create_shm(){
 		return -1;
 	}
 	
+	//create shared memory semaphore
 	if(create_semaphore() < 0){
 		log_write("Error creating semaphore");
 		return -1;
@@ -34,7 +35,7 @@ int create_shm(){
 }
 
 void close_semaphore(){
-	sem_close(mutex);
+	sem_close(shm_mutex);
 	sem_unlink("MUTEX");
 }
 
