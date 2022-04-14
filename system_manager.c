@@ -54,8 +54,8 @@ int read_file(FILE *fp){
 void clean_resources(int nprocs){
     int i;
     free(file_data);
-    close_shm();
     for(i = 0; i < nprocs; i++) wait(NULL);
+    close_shm();
 }
 
 int main(int argc, char *argv[]){
@@ -66,17 +66,18 @@ int main(int argc, char *argv[]){
 
     // Read from config file
     if(read_file(fopen(argv[1], "r")) < 0) {
-        exit(-1);
+        exit(1);
     }
 
     // Shared memory created
     if(create_shm() < 0) {
-        exit(-1);
+        exit(1);
     }
 
     // Create Task Manager
-    if(task_manager(file_data->queue_pos) < 0) {
-        exit(-1);
+    if(fork() == 0) {
+        task_manager(file_data->queue_pos);
+        exit(1);
     }
 
     // Create Monitor
