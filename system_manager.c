@@ -1,56 +1,97 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include "shared_memory.h"
 
-typedef struct _config_data{
-    int queue_pos, max_wait, edge_server_number;
-    edge_server *edge_servers;
-}config_data;
 
-typedef struct _edge_server{
+typedef struct {
     char name[1024];
     int processing_capacity_min, processing_capacity_max;
-    edge_server * next;
-}edge_server;
+}edgeServer;
 
-config_data read_file(FILE *fp){
+typedef struct {
+    int queue_pos, max_wait, edge_server_number;
+    edgeServer * edge_servers;
+}configData;
+
+configData * file_data;
+
+int read_file(FILE *fp){
     int i = 0;
-    config_data *configData = (config_data *) malloc(sizeof(config_data));
-    edge_server *edgeServer = (edge_server *) malloc(sizeof(edge_server));
+    file_data = (configData *) malloc(sizeof(configData));
 
     if (fp != NULL){
-        fscanf_s(fp,"%d", &configData->queue_pos);
+        fscanf(fp,"%d", &file_data->queue_pos);
+        fscanf(fp,"%d", &file_data->max_wait);
+        fscanf(fp,"%d", &file_data->edge_server_number);
 
-        fscanf_s(fp,"%d", &configData->max_wait);
+        file_data->edge_servers = (edgeServer *) malloc(sizeof(edgeServer) * file_data->edge_server_number);
 
-        fscanf_s(fp,"%d", &configData->edge_server_number);
-
-
-        if(configData->edge_server_number >= 2){
-            for(; i < configData->edge_server_number; i++){
-                fscanf_s(fp,"%s,%d,%d", &edgeServer->name, &edgeServer->processing_capacity_min, &edgeServer->processing_capacity_max);
-                edgeServer = edgeServer->next;
+        if(file_data->edge_server_number >= 2){
+            for(; i < file_data->edge_server_number; i++){
+                fscanf(fp,"%s,%d,%d", file_data->edge_servers[i].name, &file_data->edge_servers[i].processing_capacity_min, &file_data->edge_servers[i].processing_capacity_max);
             }
+
         }
         else{
             printf("Edge server number needs to be higher than 1\n");
-            exit(1);
+            return -1;
         }
-
+        return 0;
     } else{
         printf("Error in config file\n");
-        exit(1);
+        return -1;
     }
 }
 
+void clean_resources(int nprocs){
+    int i;
+    free(file_data);
+    close_shm();
+    for(i = 0; i < nprocs; i++) wait(NULL);
+}
+
 int main(int argc, char *argv[]){
-    int i = 0;
     if(argc != 2){
         printf("Wrong number of parameters\n");
         exit(1);
     }
 
-    FILE *fp = fopen(argv[1], "r");
-    read_file(fp);
+    // Read from config file
+    if(read_file(fopen(argv[1], "r")) < 0) {
+        exit(-1);
+    }
 
+    // Shared memory created
+    if(create_shm() < 0) {
+        exit(-1);
+    }
+
+    // Create Task Manager
+    if(task_manager(file_data->queue_pos) < 0) {
+        exit(-1);
+    }
+
+    // Create Monitor
+    if(fork() == 0){
+        // What the Monitor will do
+
+        // Bye bye Monitor
+        exit(0);
+    }
+
+    // Create Maintenance Manager
+    if(fork() == 0){
+        // What the Maintenance Manager will do
+
+        // Bye bye Maintenance Manager
+        exit(0);
+    }
+
+    clean_resources(3);
     exit(0);
 }
