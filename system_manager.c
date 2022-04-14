@@ -39,11 +39,14 @@ int read_file(FILE *fp){
         }
         else{
             printf("Edge server number needs to be higher than 1\n");
+            fclose(fp);
             return -1;
         }
+        fclose(fp);
         return 0;
     } else{
         printf("Error in config file\n");
+        fclose(fp);
         return -1;
     }
 }
