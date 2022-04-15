@@ -1,12 +1,10 @@
-#include <semaphore.h>
+typedef struct {
+    char name[1024];
+    int processing_capacity_min, processing_capacity_max;
+    int performance_level;
+}EdgeServer;
 
-typedef struct{
-
-}SharedMemory;
-
-sem_t* shm_mutex;
-SharedMemory* shared_var;
-int shmid;
+int edge_server_number;
 
 int create_shm();
 void close_shm();
