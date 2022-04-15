@@ -2,7 +2,7 @@ typedef struct {
     char name[1024];
     int processing_capacity_min, processing_capacity_max;
     int performance_level;
-}EdgeServer;
+}edgeServer;
 
 int edge_server_number;
 

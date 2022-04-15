@@ -39,7 +39,7 @@ void check_expired(double current_time){
 		//check if task time has expired
 		if(current_time > queue[i].arrival_time + queue[i].max_exec_time){
 			char msg[100];
-			sprintf(msg, "Scheduler: Task %d has been removed from the task queue (Maximum execution time has already passed)", queue[i].id);
+			sprintf(msg, "SCHEDULER: TASK %d HAS BEEN REMOVED FROM THE TASK QUEUE (MAXIMUM EXECUTION TIME HAS ALREADY PASSED)", queue[i].id);
 			log_write(msg);
 			//remove task from queue
 			queue_size--;
@@ -82,7 +82,7 @@ int task_manager(const int QUEUE_POS){
 	//create task queue
 	queue = (Task *)malloc(QUEUE_POS * sizeof(Task));
 	if(queue == NULL){
-		log_write("Error allocating memory for task manager queue");
+		log_write("ERROR ALLOCATING MEMORY FOR TASK MANAGER QUEUE");
 		return -1;
 	}
 	

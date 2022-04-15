@@ -21,20 +21,20 @@ int create_shm(){
 	//create shared memory
 	//the shared memory will include one integer (a flag for the monitor to change
 	//the perforce mode of the edge servers) and edge_server_number edge servers
-	if((shmid = shmget(IPC_PRIVATE, sizeof(int) + edge_server_number*sizeof(EdgeServer), IPC_CREAT|0766))<0){
-		log_write("Error creating shared memory");
+	if((shmid = shmget(IPC_PRIVATE, sizeof(int) + edge_server_number*sizeof(edgeServer), IPC_CREAT|0766))<0){
+		log_write("ERROR CREATING SHARED MEMORY");
 		return -1;
 	}	
 	
 	//attach shared memory
 	if((shared_var = (int*)shmat(shmid, NULL, 0)) == (int*)-1){
-		log_write("Error attaching shared memory");
+		log_write("ERROR ATTACHING SHARED MEMORY");
 		return -1;
 	}
 	
 	//create shared memory mutex
 	if(create_mutex() < 0){
-		log_write("Error creating shared memory mutex");
+		log_write("ERROR CREATING SHARED MEMORY MUTEX");
 		return -1;
 	}
 	
@@ -55,13 +55,13 @@ void shm_unlock(){
 
 EdgeServer* get_edge_server(int n){
 	//return a pointer to the edge server number n in the shared memory
-	return ((EdgeServer*)(shared_var+1)) + n-1; 
+	return ((edgeServer*)(shared_var+1)) + n-1;
 }
 
 
 void set_edge_server(EdgeServer* es, int n){
 	//get a pointer to the edge server number n in the shared memory
-	EdgeServer* edge_server_n = ((EdgeServer*)(shared_var+1)) + n-1;
+	EdgeServer* edge_server_n = ((edgeServer*)(shared_var+1)) + n-1;
 	
 	//store the changes made to the edge server
 	*edge_server_n = *es;  
