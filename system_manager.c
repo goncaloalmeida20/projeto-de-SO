@@ -4,9 +4,11 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include "shared_memory.h"
 #include "log.h"
+#include "task_manager.h"
 
 typedef struct {
     int queue_pos, max_wait, edge_server_number;
@@ -75,23 +77,25 @@ int main(int argc, char *argv[]){
 
     // Create Task Manager
     if(fork() == 0) {
-        task_manager(file_data->queue_pos);
         log_write("PROCESS TASK_MANAGER CREATED");
+        task_manager(file_data->queue_pos);
         exit(0);
     }
 
     // Create Monitor
     if(fork() == 0){
-        // What the Monitor will do
         log_write("PROCESS MONITOR CREATED");
+        // What the Monitor will do
+
         // Bye bye Monitor
         exit(0);
     }
 
     // Create Maintenance Manager
     if(fork() == 0){
-        // What the Maintenance Manager will do
         log_write("MAINTENANCE MANAGER CREATED");
+        // What the Maintenance Manager will do
+
         // Bye bye Maintenance Manager
         exit(0);
     }

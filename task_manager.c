@@ -1,6 +1,24 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <pthread.h>
+#include <semaphore.h>
 #include "task_manager.h"
+#include "log.h"
+
+typedef struct{
+    int id;
+    int thousand_inst;
+    double max_exec_time;
+    double arrival_time;
+    int priority;
+}Task;
+
+int queue_size;
+Task *queue;
+pthread_t scheduler_thread;
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t scheduler_signal = PTHREAD_COND_INITIALIZER;
 
 double get_current_time(){
 	struct timespec ts;
