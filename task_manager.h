@@ -1,3 +1,3 @@
+int queue_pos, max_wait;
 
-
-int task_manager(const int QUEUE_POS);
+int task_manager();

@@ -3,7 +3,11 @@
 #include <time.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include "task_manager.h"
+#include "edge_server.h"
+#include "shared_memory.h"
 #include "log.h"
 
 typedef struct{
@@ -26,8 +30,10 @@ double get_current_time(){
 	return ts.tv_sec+((double)ts.tv_sec)/1000000000;
 }
 
-void add_task_to_queue(Task t){
+int add_task_to_queue(Task t){
+	if(queue_size >= queue_pos) return -1;
 	queue[queue_size++] = t;
+	return 0;
 }
 
 void reevaluate_priorities(double current_time){
@@ -74,7 +80,7 @@ void* scheduler(void *t){
 		pthread_mutex_lock(&queue_mutex);
 		
 		//wait for new task to arrive
-		pthread_cond_wait(&scheduler_signal, &queue_mutex);
+		// pthread_cond_wait(&scheduler_signal, &queue_mutex);
 		
 		//update current time
 		current_time = get_current_time();
@@ -91,17 +97,35 @@ void* scheduler(void *t){
 }
 
 void clean_tm_resources(){
+	int i;
+	
+	pthread_join(scheduler_thread, NULL);
+	
+	//wait for edge server processes
+	for(i = 0; i < edge_server_number; i++) wait(NULL);
+	
 	pthread_mutex_destroy(&queue_mutex);
 	pthread_cond_destroy(&scheduler_signal);
 	free(queue);
 }
 
-int task_manager(const int QUEUE_POS){
+int task_manager(){
+	int i;
+
 	//create task queue
-	queue = (Task *)malloc(QUEUE_POS * sizeof(Task));
+	queue = (Task *)malloc(queue_pos * sizeof(Task));
 	if(queue == NULL){
 		log_write("ERROR ALLOCATING MEMORY FOR TASK MANAGER QUEUE");
 		return -1;
+	}
+	
+	//create edge server processes
+	for(i = 0; i < edge_server_number; i++){
+		//create edge server number i
+		if(fork() == 0){
+			edge_server(i+1);
+			exit(0);
+		}
 	}
 	
 	queue_size = 0;
@@ -110,7 +134,6 @@ int task_manager(const int QUEUE_POS){
 	pthread_create(&scheduler_thread, NULL, scheduler, NULL);
 	
 	
-	pthread_join(scheduler_thread, NULL);
 	clean_tm_resources();
 	return 0;
 }

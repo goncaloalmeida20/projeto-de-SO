@@ -10,27 +10,23 @@
 #include "log.h"
 #include "task_manager.h"
 
-typedef struct {
-    int queue_pos, max_wait, edge_server_number;
-    edgeServer * edge_servers;
-}configData;
+//#define DEBUG //uncomment this line to print debug messages
 
-configData * file_data;
+edgeServer * edge_servers;
 
 int read_file(FILE *fp){
     int i = 0;
-    file_data = (configData *) malloc(sizeof(configData));
 
     if (fp != NULL){
-        fscanf(fp,"%d", &file_data->queue_pos);
-        fscanf(fp,"%d", &file_data->max_wait);
-        fscanf(fp,"%d", &file_data->edge_server_number);
+        fscanf(fp,"%d", &queue_pos);
+        fscanf(fp,"%d", &max_wait);
+        fscanf(fp,"%d", &edge_server_number);
 
-        file_data->edge_servers = (edgeServer *) malloc(sizeof(edgeServer) * file_data->edge_server_number);
+        edge_servers = (edgeServer *) malloc(sizeof(edgeServer) * edge_server_number);
 
-        if(file_data->edge_server_number >= 2){
-            for(; i < file_data->edge_server_number; i++){
-                fscanf(fp,"%s,%d,%d", file_data->edge_servers[i].name, &file_data->edge_servers[i].processing_capacity_min, &file_data->edge_servers[i].processing_capacity_max);
+        if(edge_server_number >= 2){
+            for(; i < edge_server_number; i++){
+                fscanf(fp,"%s,%d,%d", edge_servers[i].name, &edge_servers[i].processing_capacity_min, &edge_servers[i].processing_capacity_max);
             }
         }
         else{
@@ -48,19 +44,27 @@ int read_file(FILE *fp){
 
 void clean_resources(int nprocs){
     int i;
-    free(file_data->edge_servers);
-    free(file_data);
+    
+    #ifdef DEBUG
+	printf("Waiting for processes to finish...\n");
+	#endif
     for(i = 0; i < nprocs; i++) wait(NULL);
+    free(edge_servers);
     close_shm();
     close_log();
 }
 
 int main(int argc, char *argv[]){
+	int i;
+
     if(argc != 2){
         printf("WRONG NUMBER OF PARAMETERS\n");
         exit(1);
     }
-
+	
+	#ifdef DEBUG
+	printf("Creating log...\n");
+	#endif
     create_log();
 
     // Read from config file
@@ -69,16 +73,32 @@ int main(int argc, char *argv[]){
     }
 
     log_write("OFFLOAD SIMULATOR STARTING");
-
+	
+	#ifdef DEBUG
+	printf("Creating shared memory...\n");
+	#endif
     // Shared memory created
     if(create_shm() < 0) {
         exit(1);
     }
-
+	
+	#ifdef DEBUG
+	printf("Saving edge servers...\n");
+	#endif
+	// Save the edge servers in the shared memory 
+	shm_lock();
+	for(i = 0; i < edge_server_number; i++){
+		#ifdef DEBUG
+		printf("Setting edge server %s with number %d...\n", edge_servers[i].name, i+1);
+		#endif
+		set_edge_server(&edge_servers[i], i+1);
+	}
+	shm_unlock();
+	
     // Create Task Manager
     if(fork() == 0) {
         log_write("PROCESS TASK_MANAGER CREATED");
-        task_manager(file_data->queue_pos);
+        task_manager();
         exit(0);
     }
 
@@ -87,7 +107,6 @@ int main(int argc, char *argv[]){
         log_write("PROCESS MONITOR CREATED");
         // What the Monitor will do
 
-        // Bye bye Monitor
         exit(0);
     }
 
@@ -96,7 +115,6 @@ int main(int argc, char *argv[]){
         log_write("MAINTENANCE MANAGER CREATED");
         // What the Maintenance Manager will do
 
-        // Bye bye Maintenance Manager
         exit(0);
     }
 

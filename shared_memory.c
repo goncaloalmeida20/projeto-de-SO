@@ -7,7 +7,7 @@
 #include "log.h"
 
 sem_t* shm_mutex;
-int* shared_var;
+int *shared_var, shmid;
 int shmid;
 
 int create_shm_mutex(){
