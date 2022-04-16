@@ -1,6 +1,24 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <pthread.h>
+#include <semaphore.h>
 #include "task_manager.h"
+#include "log.h"
+
+typedef struct{
+    int id;
+    int thousand_inst;
+    double max_exec_time;
+    double arrival_time;
+    int priority;
+}Task;
+
+int queue_size;
+Task *queue;
+pthread_t scheduler_thread;
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t scheduler_signal = PTHREAD_COND_INITIALIZER;
 
 double get_current_time(){
 	struct timespec ts;
@@ -39,7 +57,7 @@ void check_expired(double current_time){
 		//check if task time has expired
 		if(current_time > queue[i].arrival_time + queue[i].max_exec_time){
 			char msg[100];
-			sprintf(msg, "Scheduler: Task %d has been removed from the task queue (Maximum execution time has already passed)", queue[i].id);
+			sprintf(msg, "SCHEDULER: TASK %d HAS BEEN REMOVED FROM THE TASK QUEUE (MAXIMUM EXECUTION TIME HAS ALREADY PASSED)", queue[i].id);
 			log_write(msg);
 			//remove task from queue
 			queue_size--;
@@ -82,7 +100,7 @@ int task_manager(const int QUEUE_POS){
 	//create task queue
 	queue = (Task *)malloc(QUEUE_POS * sizeof(Task));
 	if(queue == NULL){
-		log_write("Error allocating memory for task manager queue");
+		log_write("ERROR ALLOCATING MEMORY FOR TASK MANAGER QUEUE");
 		return -1;
 	}
 	

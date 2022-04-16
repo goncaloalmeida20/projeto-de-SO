@@ -1,11 +1,13 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <fcntl.h>
 #include <semaphore.h>
 #include "log.h"
 
 sem_t* log_mutex;
 
-int create_mutex(){
+int create_log_mutex(){
 	sem_unlink("LOG_MUTEX");
 	if((log_mutex = sem_open("LOG_MUTEX",O_CREAT|O_EXCL,0700,1)) == SEM_FAILED)	
 		return -1;
@@ -15,7 +17,7 @@ int create_mutex(){
 
 int create_log(){
 	//create log mutex 
-	if(create_mutex() < 0){
+	if(create_log_mutex() < 0){
 		printf("Error creating log mutex\n");
 		return -1;
 	}
@@ -48,7 +50,7 @@ int log_write(char *s){
 	}
 	
 	//write message in the file
-	fprintf("%02d:%02d:%02d %s\n", time_now->tm_hour, time_now->tm_min, time_now->tm_sec, s);
+	fprintf(f, "%02d:%02d:%02d %s\n", time_now->tm_hour, time_now->tm_min, time_now->tm_sec, s);
 	
 	fclose(f);
 	sem_post(log_mutex);

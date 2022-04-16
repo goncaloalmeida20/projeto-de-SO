@@ -4,14 +4,11 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include "shared_memory.h"
-
-
-typedef struct {
-    char name[1024];
-    int processing_capacity_min, processing_capacity_max;
-}edgeServer;
+#include "log.h"
+#include "task_manager.h"
 
 typedef struct {
     int queue_pos, max_wait, edge_server_number;
@@ -35,39 +32,43 @@ int read_file(FILE *fp){
             for(; i < file_data->edge_server_number; i++){
                 fscanf(fp,"%s,%d,%d", file_data->edge_servers[i].name, &file_data->edge_servers[i].processing_capacity_min, &file_data->edge_servers[i].processing_capacity_max);
             }
-
         }
         else{
-            printf("Edge server number needs to be higher than 1\n");
+            log_write("EDGE SERVER NUMBER NEEDS TO BE HIGHER THAN 1");
             fclose(fp);
             return -1;
         }
         fclose(fp);
         return 0;
     } else{
-        printf("Error in config file\n");
-        fclose(fp);
+        log_write("ERROR IN CONFIG FILE");
         return -1;
     }
 }
 
 void clean_resources(int nprocs){
     int i;
+    free(file_data->edge_servers);
     free(file_data);
     for(i = 0; i < nprocs; i++) wait(NULL);
     close_shm();
+    close_log();
 }
 
 int main(int argc, char *argv[]){
     if(argc != 2){
-        printf("Wrong number of parameters\n");
+        printf("WRONG NUMBER OF PARAMETERS\n");
         exit(1);
     }
+
+    create_log();
 
     // Read from config file
     if(read_file(fopen(argv[1], "r")) < 0) {
         exit(1);
     }
+
+    log_write("OFFLOAD SIMULATOR STARTING");
 
     // Shared memory created
     if(create_shm() < 0) {
@@ -76,12 +77,14 @@ int main(int argc, char *argv[]){
 
     // Create Task Manager
     if(fork() == 0) {
+        log_write("PROCESS TASK_MANAGER CREATED");
         task_manager(file_data->queue_pos);
-        exit(1);
+        exit(0);
     }
 
     // Create Monitor
     if(fork() == 0){
+        log_write("PROCESS MONITOR CREATED");
         // What the Monitor will do
 
         // Bye bye Monitor
@@ -90,6 +93,7 @@ int main(int argc, char *argv[]){
 
     // Create Maintenance Manager
     if(fork() == 0){
+        log_write("MAINTENANCE MANAGER CREATED");
         // What the Maintenance Manager will do
 
         // Bye bye Maintenance Manager
