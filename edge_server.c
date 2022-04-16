@@ -8,11 +8,11 @@ pthread_t vcpu_min_thread, vcpu_max_thread;
 int edge_server_n;
 
 void *vcpu_min(void *t){
-	
+	pthread_exit(NULL);
 }
 
 void *vcpu_max(void *t){
-
+	pthread_exit(NULL);
 }
 
 void clean_es_resources(){

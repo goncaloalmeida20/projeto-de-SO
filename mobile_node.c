@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+//#define DEBUG //uncomment this line to print debug messages
+
 typedef struct request{
 	int thousand_inst;
 	int max_exec_time;
@@ -23,8 +25,10 @@ int main(int argc, char *argv[]){
 	r.max_exec_time = atoi(argv[4]);
 	
 	for(i = 0; i < n_requests; i++){
+		#ifdef DEBUG
 		printf("Generating request %d with %d instructions and with max execution time %d s\n", i, r.thousand_inst*1000, r.max_exec_time);
 		printf("Sleeping %d milliseconds...\n", req_interval_ms);
+		#endif
 		usleep(req_interval_ms*1000);
 	}
 	
