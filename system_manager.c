@@ -83,9 +83,9 @@ int main(int argc, char *argv[]){
     }
 	
 	#ifdef DEBUG
-	printf("Saving edge servers...\n");
+	printf("Saving the edge servers data in the shared memory...\n");
 	#endif
-	// Save the edge servers in the shared memory 
+	// Save the edge servers data in the shared memory 
 	shm_lock();
 	for(i = 0; i < edge_server_number; i++){
 		#ifdef DEBUG
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]){
 
     // Create Maintenance Manager
     if(fork() == 0){
-        log_write("MAINTENANCE MANAGER CREATED");
+        log_write("PROCESS MAINTENANCE MANAGER CREATED");
         // What the Maintenance Manager will do
 
         exit(0);

@@ -30,9 +30,17 @@ double get_current_time(){
 	return ts.tv_sec+((double)ts.tv_sec)/1000000000;
 }
 
-int add_task_to_queue(Task t){
-	if(queue_size >= queue_pos) return -1;
-	queue[queue_size++] = t;
+int add_task_to_queue(Task *t){
+	#ifdef DEBUG_TM
+	printf("Adding task %d to the task queue...\n", t->id);
+	#endif
+	char msg[MSG_LEN];
+	if(queue_size >= queue_pos){
+		sprintf(msg, "TASK %d DELETED (THE TASK QUEUE IS FULL)", t->id);
+		log_write(msg);
+		return -1;
+	}
+	queue[queue_size++] = *t;
 	return 0;
 }
 
@@ -46,12 +54,14 @@ void reevaluate_priorities(double current_time){
 		time_left = queue[i].arrival_time + queue[i].max_exec_time - current_time;
 		
 		//compare with the other tasks
-		for(j = 0; j <= queue_size; j++){
-			//other task's time left to execute
-			time_left_temp = queue[j].arrival_time + queue[j].max_exec_time - current_time;
-			
-			//the number of tasks with less time left to execute will be equal to the priority
-			if(time_left > time_left_temp) queue[i].priority++;
+		for(j = 0; j < queue_size; j++){
+			if(i != j){
+				//other task's time left to execute
+				time_left_temp = queue[j].arrival_time + queue[j].max_exec_time - current_time;
+				
+				//the number of tasks with less time left to execute will be equal to the priority
+				if(time_left > time_left_temp) queue[i].priority++;
+			}
 		}
 	}
 }
@@ -63,7 +73,7 @@ void check_expired(double current_time){
 		//check if task time has expired
 		if(current_time > queue[i].arrival_time + queue[i].max_exec_time){
 			char msg[100];
-			sprintf(msg, "SCHEDULER: TASK %d HAS BEEN REMOVED FROM THE TASK QUEUE (MAXIMUM EXECUTION TIME HAS ALREADY PASSED)", queue[i].id);
+			sprintf(msg, "SCHEDULER: TASK %d HAS BEEN REMOVED FROM THE TASK QUEUE (MAXIMUM EXECUTION TIME EXPIRED)", queue[i].id);
 			log_write(msg);
 			//remove task from queue
 			queue_size--;
@@ -80,16 +90,28 @@ void* scheduler(void *t){
 		pthread_mutex_lock(&queue_mutex);
 		
 		//wait for new task to arrive
-		// pthread_cond_wait(&scheduler_signal, &queue_mutex);
+		pthread_cond_wait(&scheduler_signal, &queue_mutex);
 		
 		//update current time
 		current_time = get_current_time();
 		
+		#ifdef DEBUG_TM
+		printf("Checking expired tasks...\n");
+		#endif
 		//check tasks whose maximum execution time has already passed
 		check_expired(current_time);
 		
-		//reevaluate tasks' priorities
+		#ifdef DEBUG_TM
+		printf("Reevaluating tasks priorities...\n");
+		#endif
+		//reevaluate tasks priorities
 		reevaluate_priorities(current_time);
+		
+		#ifdef DEBUG_TM
+		printf("Task queue:\n");
+		for(int i = 0; i < queue_size; i++)
+			printf("ID:%d PRIORITY:%d\n", queue[i].id, queue[i].priority);
+		#endif
 		
 		pthread_mutex_unlock(&queue_mutex);
 	}
@@ -119,6 +141,9 @@ int task_manager(){
 		return -1;
 	}
 	
+	#ifdef DEBUG_TM
+	printf("Creating edge servers...\n");
+	#endif
 	//create edge server processes
 	for(i = 0; i < edge_server_number; i++){
 		//create edge server number i
@@ -130,9 +155,30 @@ int task_manager(){
 	
 	queue_size = 0;
 	
+	#ifdef DEBUG_TM
+	printf("Creating scheduler thread...\n");
+	#endif
 	//create scheduler thread
 	pthread_create(&scheduler_thread, NULL, scheduler, NULL);
 	
+	#ifdef TEST_TM
+	sleep(1);
+	Task t1 = {1,1,5,get_current_time(),1};
+	add_task_to_queue(&t1);
+	pthread_cond_signal(&scheduler_signal);
+	sleep(1);
+	Task t2 = {2,1,0.5,get_current_time(),1};
+	add_task_to_queue(&t2);
+	pthread_cond_signal(&scheduler_signal);
+	sleep(1);
+	Task t3 = {3,1,2,get_current_time(),1};
+	add_task_to_queue(&t3);
+	pthread_cond_signal(&scheduler_signal);
+	sleep(1);
+	Task t4 = {4,1,1.5,get_current_time(),1};
+	add_task_to_queue(&t4);
+	pthread_cond_signal(&scheduler_signal);
+	#endif
 	
 	clean_tm_resources();
 	return 0;
