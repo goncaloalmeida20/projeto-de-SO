@@ -85,6 +85,9 @@ void check_expired(double current_time){
 }
 
 void* scheduler(void *t){
+	#ifdef BREAK_TM
+	pthread_exit(NULL);
+	#endif
 	double current_time;
 	while(1){
 		pthread_mutex_lock(&queue_mutex);

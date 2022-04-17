@@ -54,9 +54,9 @@ void shm_unlock(){
 }
 
 
-edgeServer* get_edge_server(int n){
+edgeServer get_edge_server(int n){
 	//return a pointer to the edge server number n in the shared memory
-	return ((edgeServer*)(shared_var+1)) + n-1;
+	return *(((edgeServer*)(shared_var+1)) + n-1);
 }
 
 
