@@ -1,3 +1,9 @@
+/*
+Realizado por:
+João Bernardo de Jesus Santos, nº2020218995
+Gonçalo Fernandes Diogo de Almeida, nº2020218868
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -121,7 +127,7 @@ int main(int argc, char *argv[]){
 	shm_lock();
 	printf("Checking shared memory contents...\n");
 	for(i = 0; i < edge_server_number; i++){
-		edgeServer es = get_edge_server(i+1);
+		EdgeServer es = get_edge_server(i+1);
 		printf("Edge Server %d: %s %d %d\n", i+1, es.name, es.processing_capacity_min, es.processing_capacity_max);
 	}
 	printf("Performance change flag: %d\n", get_performance_change_flag());
