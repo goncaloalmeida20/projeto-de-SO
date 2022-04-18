@@ -6,13 +6,15 @@
 #include "shared_memory.h"
 #include "log.h"
 
+#define SHM_MUTEX "SHM_MUTEX"
+
 sem_t* shm_mutex;
 int *shared_var, shmid;
 int shmid;
 
 int create_shm_mutex(){
-	sem_unlink("SHM_MUTEX");
-	if((shm_mutex = sem_open("SHM_MUTEX",O_CREAT|O_EXCL,0700,1)) == SEM_FAILED)	
+	sem_unlink(SHM_MUTEX);
+	if((shm_mutex = sem_open(SHM_MUTEX,O_CREAT|O_EXCL,0700,1)) == SEM_FAILED)	
 		return -1;
 		
 	return 0;
@@ -22,7 +24,7 @@ int create_shm(){
 	//create shared memory
 	//the shared memory will include one integer (a flag for the monitor to change
 	//the perforce mode of the edge servers) and edge_server_number edge servers
-	if((shmid = shmget(IPC_PRIVATE, sizeof(int) + edge_server_number*sizeof(edgeServer), IPC_CREAT|0766))<0){
+	if((shmid = shmget(IPC_PRIVATE, sizeof(int) + edge_server_number*sizeof(edgeServer), IPC_CREAT|0700))<0){
 		log_write("ERROR CREATING SHARED MEMORY");
 		return -1;
 	}	
@@ -82,7 +84,7 @@ void set_performance_change_flag(int pcf){
 
 void close_shm_mutex(){
 	sem_close(shm_mutex);
-	sem_unlink("SHM_MUTEX");
+	sem_unlink(SHM_MUTEX);
 }
 
 //clean up resources used

@@ -18,15 +18,31 @@ int read_file(FILE *fp){
     int i = 0;
 
     if (fp != NULL){
-        fscanf(fp,"%d", &queue_pos);
-        fscanf(fp,"%d", &max_wait);
-        fscanf(fp,"%d", &edge_server_number);
+        if(fscanf(fp,"%d", &queue_pos) != 1){
+        	log_write("FORMAT ERROR IN CONFIG FILE");
+        	return -1;
+        }
+        if(fscanf(fp,"%d", &max_wait) != 1){
+        	log_write("FORMAT ERROR IN CONFIG FILE");
+        	return -1;
+        }
+        if(fscanf(fp,"%d", &edge_server_number) != 1){
+        	log_write("FORMAT ERROR IN CONFIG FILE");
+        	return -1;
+        }
 
         edge_servers = (edgeServer *) malloc(sizeof(edgeServer) * edge_server_number);
+        if(edge_servers == NULL){
+        	log_write("ERROR ALLOCATING MEMORY FOR THE EDGE SERVERS");
+        	return -1;
+        }
 
         if(edge_server_number >= 2){
             for(; i < edge_server_number; i++){
-                fscanf(fp," %[^,] , %d , %d ", edge_servers[i].name, &edge_servers[i].processing_capacity_min, &edge_servers[i].processing_capacity_max);
+                if(fscanf(fp," %[^,] , %d , %d ", edge_servers[i].name, &edge_servers[i].processing_capacity_min, &edge_servers[i].processing_capacity_max) != 3){
+        			log_write("FORMAT ERROR IN CONFIG FILE");
+        			return -1;
+        		}
                 #ifdef DEBUG
                 printf("Just read from config file the edge server: %s,%d,%d\n", edge_servers[i].name, edge_servers[i].processing_capacity_min, edge_servers[i].processing_capacity_max);
                 #endif
@@ -40,7 +56,7 @@ int read_file(FILE *fp){
         fclose(fp);
         return 0;
     } else{
-        log_write("ERROR IN CONFIG FILE");
+        log_write("ERROR OPENING CONFIG FILE");
         return -1;
     }
 }
@@ -52,7 +68,6 @@ void clean_resources(int nprocs){
 	printf("Waiting for processes to finish...\n");
 	#endif
     for(i = 0; i < nprocs; i++) wait(NULL);
-    free(edge_servers);
     close_shm();
     close_log();
 }
@@ -100,6 +115,7 @@ int main(int argc, char *argv[]){
 	// Set the performance change flag to 0 (normal)
 	set_performance_change_flag(0);
 	shm_unlock();
+	free(edge_servers);
 	
 	#ifdef DEBUG
 	shm_lock();

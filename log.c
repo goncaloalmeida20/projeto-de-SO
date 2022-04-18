@@ -5,11 +5,13 @@
 #include <semaphore.h>
 #include "log.h"
 
+#define LOG_MUTEX "LOG_MUTEX"
+
 sem_t* log_mutex;
 
 int create_log_mutex(){
-	sem_unlink("LOG_MUTEX");
-	if((log_mutex = sem_open("LOG_MUTEX",O_CREAT|O_EXCL,0700,1)) == SEM_FAILED)	
+	sem_unlink(LOG_MUTEX);
+	if((log_mutex = sem_open(LOG_MUTEX,O_CREAT|O_EXCL,0700,1)) == SEM_FAILED)	
 		return -1;
 		
 	return 0;
@@ -59,5 +61,5 @@ int log_write(char *s){
 
 void close_log(){
 	sem_close(log_mutex);
-	sem_unlink("LOG_MUTEX");
+	sem_unlink(LOG_MUTEX);
 }

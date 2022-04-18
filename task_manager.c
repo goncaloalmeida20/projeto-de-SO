@@ -27,7 +27,7 @@ pthread_cond_t scheduler_signal = PTHREAD_COND_INITIALIZER;
 double get_current_time(){
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-	return ts.tv_sec+((double)ts.tv_sec)/1000000000;
+	return ts.tv_sec+((double)ts.tv_nsec)/1000000000;
 }
 
 int add_task_to_queue(Task *t){
@@ -113,7 +113,7 @@ void* scheduler(void *t){
 		#ifdef DEBUG_TM
 		printf("Task queue:\n");
 		for(int i = 0; i < queue_size; i++)
-			printf("ID:%d PRIORITY:%d\n", queue[i].id, queue[i].priority);
+			printf("ID:%d PRIORITY:%d MAX_EXEC_TIME: %lf ARRIVAL_TIME: %lf\n", queue[i].id, queue[i].priority, queue[i].max_exec_time, queue[i].arrival_time);
 		#endif
 		
 		pthread_mutex_unlock(&queue_mutex);

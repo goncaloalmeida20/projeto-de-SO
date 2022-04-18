@@ -4,7 +4,7 @@
 
 //#define DEBUG //uncomment this line to print debug messages
 
-typedef struct request{
+typedef struct{
 	int thousand_inst;
 	int max_exec_time;
 }Request;
