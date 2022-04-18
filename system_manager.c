@@ -12,7 +12,7 @@
 
 //#define DEBUG //uncomment this line to print debug messages
 
-edgeServer * edge_servers;
+EdgeServer * edge_servers;
 
 int read_file(FILE *fp){
     int i = 0;
@@ -31,7 +31,7 @@ int read_file(FILE *fp){
         	return -1;
         }
 
-        edge_servers = (edgeServer *) malloc(sizeof(edgeServer) * edge_server_number);
+        edge_servers = (EdgeServer *) malloc(sizeof(EdgeServer) * edge_server_number);
         if(edge_servers == NULL){
         	log_write("ERROR ALLOCATING MEMORY FOR THE EDGE SERVERS");
         	return -1;
