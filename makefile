@@ -12,6 +12,9 @@ PROG2 = mobile_node
 all: ${PROG1} ${PROG2}
 
 clean:
+		rm ${OBJS1} ${OBJS2} ${PROG1} ${PROG2}
+
+clean_with_log:
 		rm ${OBJS1} ${OBJS2} ${PROG1} ${PROG2} ${LOGFILE}
 		
 ${PROG1}: ${OBJS1}
