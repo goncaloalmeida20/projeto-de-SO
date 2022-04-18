@@ -25,7 +25,7 @@ int edge_server(int es_n){
 	edge_server_n = es_n;
 	
 	shm_lock();
-	edgeServer this = get_edge_server(edge_server_n);
+	EdgeServer this = get_edge_server(edge_server_n);
 	shm_unlock();
 	sprintf(msg, "%s READY", this.name);
 	log_write(msg);
