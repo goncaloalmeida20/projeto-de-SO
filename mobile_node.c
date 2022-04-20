@@ -9,6 +9,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include <unistd.h>
 
 //#define DEBUG //uncomment this line to print debug messages
+#define PIPE_NAME "named_pipe"
 
 typedef struct{
 	int thousand_inst;

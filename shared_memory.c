@@ -16,7 +16,6 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 
 sem_t* shm_mutex;
 int *shared_var, shmid;
-int shmid;
 
 int create_shm_mutex(){
 	sem_unlink(SHM_MUTEX);

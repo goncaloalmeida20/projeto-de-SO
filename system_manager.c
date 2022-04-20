@@ -17,8 +17,10 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include "task_manager.h"
 
 //#define DEBUG //uncomment this line to print debug messages
+#define PIPE_NAME "named_pipe"
 
 EdgeServer * edge_servers;
+int nprocs = 3; // Task Manager, Monitor and Maintenance Manager
 
 int read_file(FILE *fp){
     int i = 0;
@@ -67,24 +69,34 @@ int read_file(FILE *fp){
     }
 }
 
-void clean_resources(int nprocs){
+void clean_resources(){
     int i;
     
     #ifdef DEBUG
 	printf("Waiting for processes to finish...\n");
 	#endif
     for(i = 0; i < nprocs; i++) wait(NULL);
+    unlink(PIPE_NAME);
     close_shm();
     close_log();
 }
 
+void sigint(int signum) { // handling of CTRL-C
+    clean_resources();
+    exit(0);
+}
+
 int main(int argc, char *argv[]){
-	int i;
+	int i, fd_named_pipe;
 
     if(argc != 2){
         printf("WRONG NUMBER OF PARAMETERS\n");
         exit(1);
     }
+
+    // Server terminates when CTRL-C is pressed
+    // Redirect CTRL-C
+    signal(SIGINT, sigint);
 	
 	#ifdef DEBUG
 	printf("Creating log...\n");
@@ -105,8 +117,20 @@ int main(int argc, char *argv[]){
     if(create_shm() < 0) {
         exit(1);
     }
-	
-	
+
+    // Creates the named pipe if it doesn't exist yet
+    unlink(PIPE_NAME);
+    if (mkfifo(PIPE_NAME, O_CREAT|O_EXCL|0600)<0) {
+        perror("Cannot create pipe: ");
+        exit(1);
+    }
+
+    // Opens the pipe for reading
+    if ((fd_named_pipe = open(PIPE_NAME, O_RDWR)) < 0) {
+        perror("Cannot open pipe for reading: ");
+        exit(1);
+    }
+
 	shm_lock();
 	#ifdef DEBUG
 	printf("Saving the edge servers data and performance change flag in the shared memory...\n");
