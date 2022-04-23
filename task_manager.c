@@ -11,6 +11,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include <semaphore.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include "task_manager.h"
 #include "edge_server.h"
 #include "shared_memory.h"
