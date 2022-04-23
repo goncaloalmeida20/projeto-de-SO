@@ -12,8 +12,8 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #define PIPE_NAME "named_pipe"
 
 typedef struct{
-	int thousand_inst;
-	int max_exec_time;
+    int thousand_inst;
+    int max_exec_time;
 }Request;
 
 Request r;

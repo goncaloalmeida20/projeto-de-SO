@@ -14,6 +14,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #define LOG_MUTEX "LOG_MUTEX"
 
 sem_t* log_mutex;
+FILE* f;
 
 int create_log_mutex(){
 	sem_unlink(LOG_MUTEX);
@@ -31,16 +32,16 @@ int create_log(){
 	}
 	
 	//create log file
-	FILE *f = fopen("log.txt", "w");
+	f = fopen("log.txt", "w");
 	if(f == NULL){
 		printf("Error creating log.txt\n");
 		return -1;
 	}
-	fclose(f);
+
 	return 0;
 }
 
-int log_write(char *s){
+void log_write(char *s){
 	sem_wait(log_mutex);
 	
 	//get current time
@@ -49,23 +50,17 @@ int log_write(char *s){
 
 	//write message on the console
 	printf("%02d:%02d:%02d %s\n", time_now->tm_hour, time_now->tm_min, time_now->tm_sec, s);
-
-	//open log file
-	FILE *f = fopen("log.txt", "a");
-	if(f == NULL){
-		printf("Error opening log.txt\n");
-		return -1;
-	}
 	
 	//write message in the file
 	fprintf(f, "%02d:%02d:%02d %s\n", time_now->tm_hour, time_now->tm_min, time_now->tm_sec, s);
-	
-	fclose(f);
+
 	sem_post(log_mutex);
-	return 0;
 }
 
 void close_log(){
+    sem_wait(log_mutex);
+    fclose(f);
+    sem_post(log_mutex);
 	sem_close(log_mutex);
 	sem_unlink(LOG_MUTEX);
 }

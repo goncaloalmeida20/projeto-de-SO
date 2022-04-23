@@ -17,7 +17,6 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include "task_manager.h"
 
 //#define DEBUG //uncomment this line to print debug messages
-#define PIPE_NAME "named_pipe"
 
 EdgeServer * edge_servers;
 int nprocs = 3; // Task Manager, Monitor and Maintenance Manager
@@ -125,12 +124,6 @@ int main(int argc, char *argv[]){
         exit(1);
     }
 
-    // Opens the pipe for reading
-    if ((fd_named_pipe = open(PIPE_NAME, O_RDWR)) < 0) {
-        perror("Cannot open pipe for reading: ");
-        exit(1);
-    }
-
 	shm_lock();
 	#ifdef DEBUG
 	printf("Saving the edge servers data and performance change flag in the shared memory...\n");
@@ -181,6 +174,6 @@ int main(int argc, char *argv[]){
         exit(0);
     }
 
-    clean_resources(3);
+    clean_resources();
     exit(0);
 }

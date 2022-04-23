@@ -149,6 +149,12 @@ int task_manager(){
 		log_write("ERROR ALLOCATING MEMORY FOR TASK MANAGER QUEUE");
 		return -1;
 	}
+
+    // Opens the pipe for reading
+    if ((fd_named_pipe = open(PIPE_NAME, O_RDWR)) < 0) {
+        perror("Cannot open pipe for reading: ");
+        exit(1);
+    }
 	
 	#ifdef DEBUG_TM
 	printf("Creating edge servers...\n");
