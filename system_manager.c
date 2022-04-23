@@ -5,16 +5,22 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 */
 
 #include <stdio.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+#include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <fcntl.h>
-#include "shared_memory.h"
+#include <sys/types.h>
 #include "log.h"
+#include "edge_server.h"
 #include "task_manager.h"
+#include "shared_memory.h"
+#include "maintenance_manager.h"
 
 //#define DEBUG //uncomment this line to print debug messages
 
@@ -70,7 +76,7 @@ int read_file(FILE *fp){
 
 void clean_resources(){
     int i;
-    
+    msgctl(mqid, IPC_RMID, 0);
     #ifdef DEBUG
 	printf("Waiting for processes to finish...\n");
 	#endif
@@ -85,6 +91,10 @@ void sigint(int signum) { // handling of CTRL-C
     exit(0);
 }
 
+void sigtstp(int signum) { // handling of CTRL-Z
+    print_stats();
+}
+
 int main(int argc, char *argv[]){
 	int i;
 
@@ -96,6 +106,9 @@ int main(int argc, char *argv[]){
     // Server terminates when CTRL-C is pressed
     // Redirect CTRL-C
     signal(SIGINT, sigint);
+
+    // Redirect CTRL-Z
+    signal(SIGTSTP, sigtstp);
 	
 	#ifdef DEBUG
 	printf("Creating log...\n");
@@ -125,6 +138,14 @@ int main(int argc, char *argv[]){
     }
 
 	shm_lock();
+
+    // Create Message Queue
+    if ((mqid = msgget(IPC_PRIVATE, IPC_CREAT|0777)) < 0)
+    {
+        log_write("CREATING MESSAGE QUEUE");
+        exit(0);
+    }
+
 	#ifdef DEBUG
 	printf("Saving the edge servers data and performance change flag in the shared memory...\n");
 	#endif
@@ -150,7 +171,7 @@ int main(int argc, char *argv[]){
 	printf("Performance change flag: %d\n", get_performance_change_flag());
 	shm_unlock();
 	#endif
-	
+
     // Create Task Manager
     if(fork() == 0) {
         log_write("PROCESS TASK_MANAGER CREATED");
@@ -169,8 +190,7 @@ int main(int argc, char *argv[]){
     // Create Maintenance Manager
     if(fork() == 0){
         log_write("PROCESS MAINTENANCE MANAGER CREATED");
-        // What the Maintenance Manager will do
-
+        maintenance_manager();
         exit(0);
     }
 

@@ -5,8 +5,8 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 */
 #include <stdio.h>
 #include <pthread.h>
-#include "edge_server.h"
 #include "log.h"
+#include "edge_server.h"
 #include "shared_memory.h"
 
 pthread_t vcpu_min_thread, vcpu_max_thread;

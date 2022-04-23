@@ -11,8 +11,8 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 
 typedef struct {
     char name[NAME_LEN];
-    int processing_capacity_min, processing_capacity_max;
-    int performance_level;
+    int processing_capacity_min, processing_capacity_max, performance_level;
+    int task_exec, op_main; // Number of tasks executed and number of maintenance operations
 }EdgeServer;
 
 int edge_server_number;
@@ -25,6 +25,7 @@ EdgeServer get_edge_server(int n);
 void set_edge_server(EdgeServer* es, int n);
 int get_performance_change_flag();
 void set_performance_change_flag(int pcf);
+void print_stats();
 
 
 #endif
