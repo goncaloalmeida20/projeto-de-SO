@@ -13,7 +13,6 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include <unistd.h>
 #include <fcntl.h>
 #include "task_manager.h"
-#include "edge_server.h"
 #include "shared_memory.h"
 #include "log.h"
 
@@ -54,6 +53,7 @@ int add_task_to_queue(Task *t){
 void reevaluate_priorities(double current_time){
 	int i, j;
 	double time_left, time_left_temp;
+
 	for(i = 0; i < queue_size; i++){
 		queue[i].priority = 1;
 		
@@ -142,7 +142,8 @@ void clean_tm_resources(){
 }
 
 int task_manager(){
-	int i;
+	int i, fd;
+	char msg[MSG_LEN];
 
 	//create task queue
 	queue = (Task *)malloc(queue_pos * sizeof(Task));
@@ -150,12 +151,6 @@ int task_manager(){
 		log_write("ERROR ALLOCATING MEMORY FOR TASK MANAGER QUEUE");
 		return -1;
 	}
-
-    // Opens the pipe for reading
-    if ((fd_named_pipe = open(PIPE_NAME, O_RDWR)) < 0) {
-        perror("Cannot open pipe for reading: ");
-        exit(1);
-    }
 	
 	#ifdef DEBUG_TM
 	printf("Creating edge servers...\n");
@@ -169,6 +164,8 @@ int task_manager(){
 		}
 	}
 	
+	
+	
 	queue_size = 0;
 	
 	#ifdef DEBUG_TM
@@ -177,6 +174,17 @@ int task_manager(){
 	//create scheduler thread
 	pthread_create(&scheduler_thread, NULL, scheduler, NULL);
 	
+	//opens the pipe for reading
+	if ((fd = open(PIPE_NAME, O_RDONLY)) < 0) {
+		log_write("ERROR OPENING PIPE FOR READING");
+		return -1;
+	}
+	
+	while(1){
+		if(read(fd, msg, MSG_LEN) > 0)
+			log_write(msg);
+		
+	}
 	#ifdef TEST_TM
 	sleep(1);
 	Task t1 = {1,1,5,get_current_time(),1};

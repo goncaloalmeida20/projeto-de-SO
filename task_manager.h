@@ -7,6 +7,8 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #ifndef TASK_MANAGER_H
 #define TASK_MANAGER_H
 
+#include "edge_server.h"
+
 #define PIPE_NAME "named_pipe"
 //#define DEBUG_TM //uncomment this line to print task manager debug messages
 //#define TEST_TM //uncomment this line to test task manager with pre-made tasks

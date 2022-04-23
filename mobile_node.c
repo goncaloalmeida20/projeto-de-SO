@@ -7,35 +7,40 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 //#define DEBUG //uncomment this line to print debug messages
+#define MSG_LEN 100
 #define PIPE_NAME "named_pipe"
 
-typedef struct{
-    int thousand_inst;
-    int max_exec_time;
-}Request;
-
-Request r;
-
 int main(int argc, char *argv[]){
-	int i, n_requests, req_interval_ms;
+	int i, n_requests, req_interval_ms, thousand_inst, max_exec_time;
+	char msg[MSG_LEN];
 	
 	if(argc != 5){
-		printf("Wrong number of parameters\n");
+		perror("Wrong number of parameters\n");
 		exit(0);
 	}
 	
 	n_requests = atoi(argv[1]);
 	req_interval_ms = atoi(argv[2]);
-	r.thousand_inst = atoi(argv[3]);
-	r.max_exec_time = atoi(argv[4]);
+	thousand_inst = atoi(argv[3]);
+	max_exec_time = atoi(argv[4]);
+	
+	// Opens the pipe for reading
+	int fd;
+	if ((fd = open(PIPE_NAME, O_WRONLY)) < 0) {
+		perror("Cannot open pipe for reading: ");
+		exit(0);
+	}	
 	
 	for(i = 0; i < n_requests; i++){
 		#ifdef DEBUG
-		printf("Generating request %d with %d instructions and with max execution time %d s\n", i, r.thousand_inst*1000, r.max_exec_time);
+		printf("Generating request %d with %d instructions and with max execution time %d s\n", i, thousand_inst*1000, max_exec_time);
 		printf("Sleeping %d milliseconds...\n", req_interval_ms);
 		#endif
+		sprintf(msg, "%d;%d;%d", i, thousand_inst, max_exec_time);
+		write(fd, msg, MSG_LEN);
 		usleep(req_interval_ms*1000);
 	}
 	
