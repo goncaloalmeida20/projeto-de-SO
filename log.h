@@ -11,6 +11,6 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 
 int create_log();
 void close_log();
-int log_write(char *s);
+void log_write(char *s);
 
 #endif

@@ -86,7 +86,7 @@ void sigint(int signum) { // handling of CTRL-C
 }
 
 int main(int argc, char *argv[]){
-	int i, fd_named_pipe;
+	int i;
 
     if(argc != 2){
         printf("WRONG NUMBER OF PARAMETERS\n");
