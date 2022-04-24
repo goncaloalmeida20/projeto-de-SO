@@ -190,7 +190,7 @@ int main(int argc, char *argv[]){
     // Create Maintenance Manager
     if(fork() == 0){
         log_write("PROCESS MAINTENANCE MANAGER CREATED");
-        maintenance_manager();
+        maintenance_manager(mqid, edge_server_number);
         exit(0);
     }
 

@@ -11,14 +11,12 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include <unistd.h>
 #include <signal.h>
 #include <sys/ipc.h>
-#include <sys/msg.h>
 #include <sys/shm.h>
 #include <sys/types.h>
 #include <semaphore.h>
 #include "log.h"
 #include "shared_memory.h"
 #include "edge_server.h"
-#include "maintenance_manager.h"
 
 #define SHM_MUTEX "SHM_MUTEX"
 
@@ -81,16 +79,6 @@ void set_edge_server(EdgeServer* es, int n){
 	
 	//store the changes made to the edge server
 	*edge_server_n = *es;
-
-	//notify the maintenance manager of the creation of the edge_server
-    Message msg;
-    strcpy(msg.msg_type, edge_server_n->name);
-    strcpy(msg.msg_text, "ES CREATED");
-    if (msgsnd(mqid, &msg, sizeof(Message), 0) < 0){
-        char inf[MSG_LEN];
-        sprintf(inf, "IT WAS NOT POSSIBLY TO NOTIFY THE MAINTENANCE MANAGER OF THE CREATION OF THE EDGE SERVER %s", edge_server_n->name);
-        log_write(inf);
-    }
 }
 
 int get_performance_change_flag(){
