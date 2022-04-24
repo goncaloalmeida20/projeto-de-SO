@@ -143,7 +143,8 @@ void clean_tm_resources(){
 
 int task_manager(){
 	int i, fd;
-	char msg[MSG_LEN];
+	char msg[MSG_LEN], msg_temp[MSG_LEN*2];
+	Task t;
 
 	//create task queue
 	queue = (Task *)malloc(queue_pos * sizeof(Task));
@@ -181,8 +182,32 @@ int task_manager(){
 	}
 	
 	while(1){
-		if(read(fd, msg, MSG_LEN) > 0)
-			log_write(msg);
+		//read message from the named pipe
+		if(read(fd, msg, MSG_LEN) > 0){
+			if(sscanf(msg, "%d;%d;%lf", &t.id, &t.thousand_inst, &t.max_exec_time) == 3){
+				//new task arrived
+				t.arrival_time = get_current_time();
+				t.priority = 0;
+				
+				//add task to queue and signal scheduler that a new task has arrived
+				pthread_mutex_lock(&queue_mutex);
+				if(add_task_to_queue(&t) == 0){
+					pthread_cond_signal(&scheduler_signal);
+				}
+				pthread_mutex_unlock(&queue_mutex);	
+			}else if(strcmp(msg, "STATS") == 0)
+				log_write("PRINT STATS");
+			else if(strcmp(msg, "EXIT") == 0){
+				log_write("EXIT");
+				break;
+			}else{
+				sprintf(msg_temp, "WRONG COMMAND => %s", msg);
+				log_write(msg_temp);
+			}
+			
+		}
+		else
+			log_write("READ ERROR TM");
 		
 	}
 	#ifdef TEST_TM
