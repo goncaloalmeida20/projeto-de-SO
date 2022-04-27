@@ -7,7 +7,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #ifndef LOG_H
 #define LOG_H
 
-#define MSG_LEN 100
+#define MSG_LEN 256
 
 int create_log();
 void close_log();

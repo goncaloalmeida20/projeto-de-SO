@@ -7,7 +7,7 @@
 #ifndef MAINTENANCE_MANAGER_H
 #define MAINTENANCE_MANAGER_H
 
-#define MSG_LEN 100
+#define MSG_LEN 256
 #define NAME_LEN 50
 
 #define ES_TYPE 1

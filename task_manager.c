@@ -6,6 +6,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <pthread.h>
 #include <semaphore.h>
