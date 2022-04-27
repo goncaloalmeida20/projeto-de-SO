@@ -142,7 +142,7 @@ int main(int argc, char *argv[]){
     // Create Message Queue
     if ((mqid = msgget(IPC_PRIVATE, IPC_CREAT|0777)) < 0)
     {
-        log_write("CREATING MESSAGE QUEUE");
+        log_write("ERROR CREATING MESSAGE QUEUE");
         exit(0);
     }
 

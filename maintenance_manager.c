@@ -19,53 +19,60 @@
 #include <semaphore.h>
 #include "maintenance_manager.h"
 
-pthread_t mm_thread;
-int interval_of_mm, time_bw_mm, mqid, edge_server_number, num_es_in_maintenance = 0;
+pthread_t * mm_thread;
+int interval_of_mm, time_bw_mm, mqid, edge_server_number, * id;
 
 void clean_mm_resources(){
-    pthread_join(mm_thread, NULL);
+    int i;
+    for(i = 0; i < edge_server_number; i++) pthread_join(mm_thread[i], NULL);
+    free(id);
+    free(mm_thread);
 }
 
 void * maintenance(void *t){
     Message msg;
+    int es_id = *((int *) t);
+    int mm_msg_type = es_id * 2 + 1, es_msg_type = es_id * 2;
 
     // Maintenance of the Edge Servers
     while(1){
-        if(num_es_in_maintenance < edge_server_number) {
-            msg.msg_type = 2;
-            strcpy(msg.sender_name, "MM");
-            strcpy(msg.msg_text, "START");
-            msgsnd(mqid, &msg, sizeof(Message), 0);
-            msgrcv(mqid, &msg, sizeof(Message), ES_TYPE, 0);
-            num_es_in_maintenance++;
-            sleep(interval_of_mm);
-            msg.msg_type = 2;
-            strcpy(msg.sender_name, "MM");
-            strcpy(msg.msg_text, "END");
-            msgsnd(mqid, &msg, sizeof(Message), 0);
-            sleep(time_bw_mm);
-            num_es_in_maintenance--;
-        }
+        msg.msg_type = mm_msg_type;
+        strcpy(msg.msg_text, "START");
+        msgsnd(mqid, &msg, sizeof(Message), 0);
+        msgrcv(mqid, &msg, sizeof(Message), es_msg_type, 0);
+        sleep(interval_of_mm);
+        msg.msg_type = mm_msg_type;
+        strcpy(msg.msg_text, "END");
+        msgsnd(mqid, &msg, sizeof(Message), 0);
+        sleep(time_bw_mm);
     }
     pthread_exit(NULL);
 }
 
 void maintenance_manager(int mq_id, int es_num) {
     Message msg;
-    char es_names[es_num][NAME_LEN];
-    int n = 0;
+    srand(time(NULL));
+    int i, es_msg_type;
     time_bw_mm = rand() % 5 + 1;
     interval_of_mm = rand() % 5 + 1;
     mqid = mq_id;
     edge_server_number = es_num;
 
     // The Maintenance Manager is informed of the creation of the Edge Servers
-    while (n < edge_server_number)
+    for(i = 0; i < edge_server_number; i++)
     {
-        // Waits for a message with its id (=ES_TYPE)
-        msgrcv(mqid, &msg, sizeof(Message), ES_TYPE, 0);
-        strcpy(es_names[n++], msg.sender_name);
+        es_msg_type = (i + 1) * 2;
+        // Waits for a message with its id
+        msgrcv(mqid, &msg, sizeof(Message), es_msg_type, 0);
     }
 
-    pthread_create(&mm_thread, NULL, maintenance, NULL);
+    mm_thread = (pthread_t *) malloc(sizeof(pthread_t) * edge_server_number);
+    id = (int *) malloc(sizeof(int) * edge_server_number);
+
+    for(i = 0; i < edge_server_number; i++){
+        id[i] = i + 1;
+        pthread_create(&mm_thread[i], NULL, maintenance, &id[i]);
+    }
+
+    clean_mm_resources();
 }

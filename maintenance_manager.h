@@ -10,13 +10,9 @@
 #define MSG_LEN 256
 #define NAME_LEN 50
 
-#define ES_TYPE 1
-#define MM_TYPE 2
-
 typedef struct
 {
     long msg_type;
-    char sender_name[NAME_LEN];
     char msg_text[MSG_LEN];
 } Message;
 
