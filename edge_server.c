@@ -25,7 +25,7 @@ int edge_server_n, wait_for_all_tasks_done = 0;
 char es_name[NAME_LEN];
 pthread_mutex_t tasks_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t maintenance_signal = PTHREAD_COND_INITIALIZER;
-pthread_t vcpu_min_thread, vcpu_max_thread, maintenance_thread;
+pthread_t vcpu_min_thread, vcpu_max_thread, maintenance_thread, performance_thread;
 
 void *vcpu_min(void *t){
     pthread_mutex_lock(&tasks_mutex);
@@ -42,6 +42,7 @@ void *vcpu_max(void *t){
 }
 
 void clean_es_resources(){
+    pthread_join(perfomance_thread, NULL);
 	pthread_join(vcpu_min_thread, NULL);
 	pthread_join(vcpu_max_thread, NULL);
     pthread_mutex_destroy(&tasks_mutex);
@@ -80,6 +81,19 @@ void * enter_maintenance(void * t){
     pthread_exit(NULL);
 }
 
+void * check_performance(void * t){
+    int pl;
+    while(1){
+        pl = get_performance_change_flag();
+        if(pl == 1){
+
+        } else if (pl == 2) {
+
+        }
+    }
+    pthread_exit(NULL);
+}
+
 int edge_server(int es_n){
 	char msg[MSG_LEN];
 	edge_server_n = es_n;
@@ -106,6 +120,7 @@ int edge_server(int es_n){
 	pthread_create(&vcpu_min_thread, NULL, vcpu_min, NULL);
 	pthread_create(&vcpu_max_thread, NULL, vcpu_max, NULL);
 	pthread_create(&maintenance_thread, NULL, enter_maintenance, NULL);
+	pthread_create(&performance_thread, NULL, check_performance, NULL);
 	
 	clean_es_resources();
 	return 0;

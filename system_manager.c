@@ -17,6 +17,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include <sys/wait.h>
 #include <sys/types.h>
 #include "log.h"
+#include "monitor.h"
 #include "edge_server.h"
 #include "task_manager.h"
 #include "shared_memory.h"
@@ -182,8 +183,7 @@ int main(int argc, char *argv[]){
     // Create Monitor
     if(fork() == 0){
         log_write("PROCESS MONITOR CREATED");
-        // What the Monitor will do
-
+        monitor();
         exit(0);
     }
 
