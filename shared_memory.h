@@ -11,6 +11,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 
 typedef struct {
     char name[NAME_LEN];
+    double next_available_time_min, next_available_time_max;
     int processing_capacity_min, processing_capacity_max, performance_level;
     int task_exec, op_main; // Number of tasks executed and number of maintenance operations
 }EdgeServer;

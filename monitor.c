@@ -8,5 +8,5 @@
 #include "monitor.h"
 
 int monitor(){
-
+	return 0;
 }

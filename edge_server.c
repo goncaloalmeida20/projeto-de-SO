@@ -21,31 +21,52 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include "shared_memory.h"
 #include "maintenance_manager.h"
 
+
 int edge_server_n, wait_for_all_tasks_done = 0;
 char es_name[NAME_LEN];
 pthread_mutex_t tasks_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t maintenance_signal = PTHREAD_COND_INITIALIZER;
-pthread_t vcpu_min_thread, vcpu_max_thread, maintenance_thread, performance_thread;
+pthread_t vcpu_min_thread, vcpu_max_thread, maintenance_thread, performance_thread, task_thread;
+
+double get_current_time(){
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+	return ts.tv_sec+((double)ts.tv_nsec)/1000000000;
+}
 
 void *vcpu_min(void *t){
+	
+
     pthread_mutex_lock(&tasks_mutex);
-    if(wait_for_all_tasks_done == 1) pthread_cond_signal(&maintenance_signal);
+    if(wait_for_all_tasks_done > 0){
+    	wait_for_all_tasks_done--;
+     	pthread_cond_signal(&maintenance_signal);
+    }
     pthread_mutex_unlock(&tasks_mutex);
     pthread_exit(NULL);
 }
 
 void *vcpu_max(void *t){
     pthread_mutex_lock(&tasks_mutex);
-    if(wait_for_all_tasks_done == 1) pthread_cond_signal(&maintenance_signal);
+    if(wait_for_all_tasks_done > 0){
+    	wait_for_all_tasks_done--;
+     	pthread_cond_signal(&maintenance_signal);
+    }
     pthread_mutex_unlock(&tasks_mutex);
 	pthread_exit(NULL);
 }
 
+void *receive_tasks(){
+	pthread_exit(NULL);
+}
+
+
 void clean_es_resources(){
-    pthread_join(perfomance_thread, NULL);
+    pthread_join(performance_thread, NULL);
 	pthread_join(vcpu_min_thread, NULL);
 	pthread_join(vcpu_max_thread, NULL);
     pthread_mutex_destroy(&tasks_mutex);
+    pthread_join(task_thread, NULL);
 	pthread_join(maintenance_thread, NULL);
     pthread_cond_destroy(&maintenance_signal);
 }
@@ -53,22 +74,25 @@ void clean_es_resources(){
 void * enter_maintenance(void * t){
     Message msg;
     char log[MSG_LEN];
-    int mm_msg_type = edge_server_n * 2 + 1, es_msg_type = edge_server_n * 2;
+    int mm_msg_type = edge_server_n * 2 + 1, es_msg_type = edge_server_n * 2, previous_performance_level;
 
     while(1){
         msgrcv(mqid, &msg, sizeof(Message), mm_msg_type, 0);
         shm_lock();
         EdgeServer this = get_edge_server(edge_server_n);
         this.performance_level = 0;
+        previous_performance_level = this.performance_level;
         set_edge_server(&this, edge_server_n);
         shm_unlock();
-
+		
+		
         pthread_mutex_lock(&tasks_mutex);
-        wait_for_all_tasks_done = 1;
+        wait_for_all_tasks_done = previous_performance_level;
 
         // Wait until finishes all tasks
-        while(wait_for_all_tasks_done == 1) pthread_cond_wait(&maintenance_signal, &tasks_mutex);
-
+        while(wait_for_all_tasks_done > 0) pthread_cond_wait(&maintenance_signal, &tasks_mutex);
+		
+		wait_for_all_tasks_done = 0;
         pthread_mutex_unlock(&tasks_mutex);
 
         msg.msg_type = es_msg_type;
@@ -76,6 +100,7 @@ void * enter_maintenance(void * t){
         msgsnd(mqid, &msg, sizeof(Message), 0);
         sprintf(log, "THE EDGE SERVER %s IS NOW ON MAINTENANCE", es_name);
         log_write(log);
+        sleep(10);
     }
 
     pthread_exit(NULL);
@@ -90,6 +115,7 @@ void * check_performance(void * t){
         } else if (pl == 2) {
 
         }
+        sleep(1);
     }
     pthread_exit(NULL);
 }
@@ -119,8 +145,9 @@ int edge_server(int es_n){
     printf("%ld %s\n", mm_msg.msg_type, mm_msg.msg_text);
 	pthread_create(&vcpu_min_thread, NULL, vcpu_min, NULL);
 	pthread_create(&vcpu_max_thread, NULL, vcpu_max, NULL);
-	pthread_create(&maintenance_thread, NULL, enter_maintenance, NULL);
+	//pthread_create(&maintenance_thread, NULL, enter_maintenance, NULL);
 	pthread_create(&performance_thread, NULL, check_performance, NULL);
+	pthread_create(&task_thread, NULL, receive_tasks, NULL);
 	
 	clean_es_resources();
 	return 0;
