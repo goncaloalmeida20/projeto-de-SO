@@ -12,7 +12,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 
 //#define DEBUG //uncomment this line to print debug messages
 #define MSG_LEN 100
-#define PIPE_NAME "named_pipe"
+#define PIPE_NAME "TASK_PIPE"
 
 //number of digits of a number
 //e.g. 10->2, 2000->4, 555->3

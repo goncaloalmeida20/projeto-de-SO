@@ -22,10 +22,12 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include "maintenance_manager.h"
 
 
-int edge_server_n, wait_for_all_tasks_done = 0;
+int edge_server_n, wait_for_all_tasks_done = 0, start_min = 0, start_max = 0, min_done = 1, max_done = 1, performance_level;
+int performance_level, min_capacity, max_capacity;
 char es_name[NAME_LEN];
-pthread_mutex_t tasks_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t maintenance_signal = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t maintenance_mutex = PTHREAD_MUTEX_INITIALIZER, tasks_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t maintenance_signal = PTHREAD_COND_INITIALIZER, maintenance_done_signal = PTHREAD_COND_INITIALIZER, free_signal = PTHREAD_COND_INITIALIZER;
+pthread_cond_t vcpu_min_signal = PTHREAD_COND_INITIALIZER, vcpu_max_signal = PTHREAD_COND_INITIALIZER;
 pthread_t vcpu_min_thread, vcpu_max_thread, maintenance_thread, performance_thread, task_thread;
 
 double get_current_time(){
@@ -35,28 +37,96 @@ double get_current_time(){
 }
 
 void *vcpu_min(void *t){
+	//Wait for task to arrive
+	pthread_mutex_lock(&tasks_mutex);
+	while(!start_min)
+		pthread_cond_wait(&vcpu_min_signal, &tasks_mutex);
+	min_done = 0;
+	pthread_mutex_unlock(&tasks_mutex);
 	
-
-    pthread_mutex_lock(&tasks_mutex);
+	//Task done
+	pthread_mutex_lock(&tasks_mutex);
+	min_done = 1;
+	pthread_cond_signal(&free_signal);
+	pthread_mutex_unlock(&tasks_mutex);
+	
+	//Check if maintenance is going to happen
+    pthread_mutex_lock(&maintenance_mutex);
     if(wait_for_all_tasks_done > 0){
     	wait_for_all_tasks_done--;
      	pthread_cond_signal(&maintenance_signal);
     }
-    pthread_mutex_unlock(&tasks_mutex);
+    pthread_mutex_unlock(&maintenance_mutex);
     pthread_exit(NULL);
 }
 
 void *vcpu_max(void *t){
-    pthread_mutex_lock(&tasks_mutex);
+	//Wait for task to arrive
+	pthread_mutex_lock(&tasks_mutex);
+	while(!start_max)
+		pthread_cond_wait(&vcpu_max_signal, &tasks_mutex);
+	max_done = 0;
+	pthread_mutex_unlock(&tasks_mutex);
+	
+	//Task done
+	pthread_mutex_lock(&tasks_mutex);
+	max_done = 1;
+	pthread_cond_signal(&free_signal);
+	pthread_mutex_unlock(&tasks_mutex);
+	
+	//Check if maintenance is going to happen
+    pthread_mutex_lock(&maintenance_mutex);
     if(wait_for_all_tasks_done > 0){
     	wait_for_all_tasks_done--;
      	pthread_cond_signal(&maintenance_signal);
     }
-    pthread_mutex_unlock(&tasks_mutex);
+    pthread_mutex_unlock(&maintenance_mutex);
 	pthread_exit(NULL);
 }
 
 void *receive_tasks(){
+	VCPUTask t;
+	while(1){
+		pthread_mutex_lock(&tasks_mutex);
+		while(!min_done && !max_done)
+			pthread_cond_wait(&free_signal, &tasks_mutex);
+		pthread_mutex_unlock(&tasks_mutex);
+		
+		int sign = 1;
+		write(unnamed_pipe[edge_server_n-1][1], &sign, sizeof(int));
+		
+		while(1){
+			fd_set a;
+			FD_ZERO(&a);
+			FD_SET(unnamed_pipe[edge_server_n-1][0], &a);
+			if(select(unnamed_pipe[edge_server_n-1][0] +1, &a, NULL, NULL, NULL) > 0){ 
+				read(unnamed_pipe[edge_server_n-1][0], &t, sizeof(VCPUTask));
+				if(*((int*)(&t)) != 1) break;
+			}
+			sleep(1);
+		}
+		
+		
+		#ifdef DEBUG_ES
+		printf("%s: Received task %d from unnamed_pipe %d\n", es_name, t.id, edge_server_n-1);
+		#endif
+
+		pthread_mutex_lock(&tasks_mutex);
+		if(min_done){
+			#ifdef DEBUG_ES
+			printf("%s: Sending task %d to minvcpu\n", es_name, t.id);
+			#endif
+			pthread_cond_signal(&vcpu_min_signal);
+			pthread_mutex_unlock(&tasks_mutex);
+		}else if(max_done && performance_level == 2){
+			#ifdef DEBUG_ES
+			printf("%s: Sending task %d to maxvcpu\n", es_name, t.id);
+			#endif
+			pthread_cond_signal(&vcpu_max_signal);
+			pthread_mutex_unlock(&tasks_mutex);
+		}		
+		
+	}
 	pthread_exit(NULL);
 }
 
@@ -86,21 +156,23 @@ void * enter_maintenance(void * t){
         shm_unlock();
 		
 		
-        pthread_mutex_lock(&tasks_mutex);
+        pthread_mutex_lock(&maintenance_mutex);
         wait_for_all_tasks_done = previous_performance_level;
 
         // Wait until finishes all tasks
         while(wait_for_all_tasks_done > 0) pthread_cond_wait(&maintenance_signal, &tasks_mutex);
 		
 		wait_for_all_tasks_done = 0;
-        pthread_mutex_unlock(&tasks_mutex);
+        pthread_mutex_unlock(&maintenance_mutex);
 
         msg.msg_type = es_msg_type;
         strcpy(msg.msg_text, "START");
         msgsnd(mqid, &msg, sizeof(Message), 0);
         sprintf(log, "THE EDGE SERVER %s IS NOW ON MAINTENANCE", es_name);
         log_write(log);
-        sleep(10);
+        
+        //TODO: wait for the maintenance to end
+        //TODO: send maintenance_done_signal when done
     }
 
     pthread_exit(NULL);
@@ -124,11 +196,19 @@ int edge_server(int es_n){
 	char msg[MSG_LEN];
 	edge_server_n = es_n;
 	
+	performance_level = 1;
+	
 	shm_lock();
 	EdgeServer this = get_edge_server(edge_server_n);
+	strcpy(es_name, this.name);
+	min_capacity = this.processing_capacity_min;
+	max_capacity = this.processing_capacity_max;
+	this.performance_level = performance_level;
+	set_edge_server(&this, edge_server_n);
 	shm_unlock();
-	sprintf(msg, "%s READY", this.name);
-    strcpy(es_name, this.name);
+	
+	sprintf(msg, "%s READY", es_name);
+    
 	log_write(msg);
 
     //notify the maintenance manager of the creation of the edge_server
