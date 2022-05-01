@@ -221,7 +221,7 @@ int edge_server(int es_n){
         sprintf(inf, "IT WAS NOT POSSIBLE TO NOTIFY THE MAINTENANCE MANAGER OF THE CREATION OF THE EDGE SERVER %s", es_name);
         log_write(inf);
     }
-    log_write(strerror(errno));
+    //log_write(strerror(errno));
     printf("%ld %s\n", mm_msg.msg_type, mm_msg.msg_text);
 	pthread_create(&vcpu_min_thread, NULL, vcpu_min, NULL);
 	pthread_create(&vcpu_max_thread, NULL, vcpu_max, NULL);

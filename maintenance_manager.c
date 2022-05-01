@@ -38,12 +38,12 @@ void * maintenance(void *t){
     while(1){
         msg.msg_type = mm_msg_type;
         strcpy(msg.msg_text, "START");
-        msgsnd(mqid, &msg, sizeof(Message), 0);
+        msgsnd(mqid, &msg, sizeof(Message) - sizeof(long), 0);
         msgrcv(mqid, &msg, sizeof(Message), es_msg_type, 0);
         sleep(interval_of_mm);
         msg.msg_type = mm_msg_type;
         strcpy(msg.msg_text, "END");
-        msgsnd(mqid, &msg, sizeof(Message), 0);
+        msgsnd(mqid, &msg, sizeof(Message)  - sizeof(long), 0);
         sleep(time_bw_mm);
     }
     pthread_exit(NULL);

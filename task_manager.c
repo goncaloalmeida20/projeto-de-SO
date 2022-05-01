@@ -256,18 +256,24 @@ void clean_tm_resources(){
 	pthread_cond_destroy(&scheduler_signal);
 	pthread_cond_destroy(&dispatcher_signal);
 	free(queue);
+	close(task_pipe_fd);
 }
 
 void read_from_task_pipe(){
 	int read_len;
 	char msg[MSG_LEN], msg_temp[MSG_LEN*2];
 	while(1){
-		fd_set read_task_pipe;
+		/*fd_set read_task_pipe;
 		FD_ZERO(&read_task_pipe);
-		FD_SET(task_pipe_fd, &read_task_pipe);
-		
+		FD_SET(task_pipe_fd, &read_task_pipe);*/
+		//opens the pipe for reading
+		if ((task_pipe_fd = open(PIPE_NAME, O_RDONLY)) < 0) {
+			log_write("ERROR OPENING PIPE FOR READING");
+			continue;
+		}
+		//select(task_pipe_fd+1, &read_task_pipe, NULL, NULL, NULL) > 0 && 
 		//read message from the named pipe if a task was sent
-		if(select(task_pipe_fd+1, &read_task_pipe, NULL, NULL, NULL) > 0 && (read_len = read(task_pipe_fd, msg, MSG_LEN)) > 0){
+		if((read_len = read(task_pipe_fd, msg, MSG_LEN)) >= 0){
 			msg[read_len] = '\0';
 			#ifdef DEBUG_TM
 			printf("%s read from task pipe\n", msg);
@@ -300,7 +306,7 @@ void read_from_task_pipe(){
 			}
 			
 		}
-		usleep(1000);
+		close(task_pipe_fd);
 	}
 }
 
@@ -342,12 +348,6 @@ int task_manager(){
 	pthread_create(&scheduler_thread, NULL, scheduler, NULL);
 	//create dispatcher thread
 	pthread_create(&dispatcher_thread, NULL, dispatcher, NULL);
-	
-	//opens the pipe for reading
-	if ((task_pipe_fd = open(PIPE_NAME, O_RDONLY)) < 0) {
-		log_write("ERROR OPENING PIPE FOR READING");
-		return -1;
-	}
 	
 	read_from_task_pipe();
 	

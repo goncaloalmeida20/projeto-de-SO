@@ -27,6 +27,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 
 EdgeServer * edge_servers;
 int nprocs = 3; // Task Manager, Monitor and Maintenance Manager
+int task_pipe_fd;
 
 int read_file(FILE *fp){
     int i = 0;
@@ -77,11 +78,12 @@ int read_file(FILE *fp){
 
 void clean_resources(){
     int i;
-    msgctl(mqid, IPC_RMID, 0);
+    
     #ifdef DEBUG
 	printf("Waiting for processes to finish...\n");
 	#endif
     for(i = 0; i < nprocs; i++) wait(NULL);
+    msgctl(mqid, IPC_RMID, 0);
     unlink(PIPE_NAME);
     close_shm();
     close_log();

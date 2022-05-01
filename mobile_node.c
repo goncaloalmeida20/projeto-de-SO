@@ -43,9 +43,9 @@ int main(int argc, char *argv[]){
 	thousand_inst = atoi(argv[3]);
 	max_exec_time = atof(argv[4]);
 	
-	// Opens the pipe for reading
+	// Opens the pipe for writing
 	if ((fd = open(PIPE_NAME, O_WRONLY)) < 0) {
-		perror("Cannot open pipe for reading: ");
+		perror("Cannot open pipe for writing: ");
 		exit(0);
 	}	
 	
