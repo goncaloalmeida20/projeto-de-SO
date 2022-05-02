@@ -22,8 +22,8 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include "maintenance_manager.h"
 
 
-int edge_server_n, wait_for_all_tasks_done = 0, start_min = 0, start_max = 0, min_done = 1, max_done = 1, performance_level;
-int performance_level, min_capacity, max_capacity;
+int edge_server_n, wait_for_all_tasks_done = 0, start_min = 0, start_max = 0, min_done = 1, max_done = 1;
+int performance_level, min_capacity, max_capacity, maintenance_done = 1;
 char es_name[NAME_LEN];
 pthread_mutex_t maintenance_mutex = PTHREAD_MUTEX_INITIALIZER, tasks_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t maintenance_signal = PTHREAD_COND_INITIALIZER, maintenance_done_signal = PTHREAD_COND_INITIALIZER, free_signal = PTHREAD_COND_INITIALIZER;
@@ -92,19 +92,13 @@ void *receive_tasks(){
 			pthread_cond_wait(&free_signal, &tasks_mutex);
 		pthread_mutex_unlock(&tasks_mutex);
 		
-		int sign = 1;
-		write(unnamed_pipe[edge_server_n-1][1], &sign, sizeof(int));
 		
-		while(1){
-			fd_set a;
-			FD_ZERO(&a);
-			FD_SET(unnamed_pipe[edge_server_n-1][0], &a);
-			if(select(unnamed_pipe[edge_server_n-1][0] +1, &a, NULL, NULL, NULL) > 0){ 
-				read(unnamed_pipe[edge_server_n-1][0], &t, sizeof(VCPUTask));
-				if(*((int*)(&t)) != 1) break;
-			}
-			sleep(1);
-		}
+		pthread_mutex_lock(&maintenance_mutex);
+		while(!maintenance_done)
+			pthread_cond_wait(&maintenance_done_signal, &maintenance_mutex);
+		pthread_mutex_unlock(&maintenance_mutex);
+		
+		read(unnamed_pipe[edge_server_n-1][0], &t, sizeof(VCPUTask));
 		
 		
 		#ifdef DEBUG_ES

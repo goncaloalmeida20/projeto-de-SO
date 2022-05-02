@@ -116,7 +116,7 @@ void* scheduler(void *t){
 		pthread_mutex_lock(&queue_mutex);
 		
 		//wait for new task to arrive
-		while(scheduler_start == 0){
+		while(!scheduler_start){
 			#ifdef DEBUG_TM
 			printf("Scheduler waiting for signal\n");
 			#endif
@@ -185,6 +185,8 @@ void* dispatcher(void *t){
 			FD_SET(unnamed_pipe[i][0], &read_pipes);
 		}
 		if(select(unnamed_pipe[edge_server_number-1][0] + 1, &read_pipes, NULL, NULL, NULL) > 0){*/
+		
+		
 			//There is at least one edge server with a free vcpu
 		int found = 0;
 		double ct = get_current_time();
@@ -255,6 +257,10 @@ void clean_tm_resources(){
 	pthread_mutex_destroy(&queue_mutex);
 	pthread_cond_destroy(&scheduler_signal);
 	pthread_cond_destroy(&dispatcher_signal);
+	pthread_mutex_destroy(&vcpu_free_mutex);
+	pthread_mutexattr_destroy(&vcpu_free_mutex_attr); 
+	pthread_cond_destroy(&vcpu_free_cond);
+	pthread_condattr_destroy(&vcpu_free_cond_attr);
 	free(queue);
 	close(task_pipe_fd);
 }
@@ -266,14 +272,10 @@ void read_from_task_pipe(){
 		/*fd_set read_task_pipe;
 		FD_ZERO(&read_task_pipe);
 		FD_SET(task_pipe_fd, &read_task_pipe);*/
-		//opens the pipe for reading
-		if ((task_pipe_fd = open(PIPE_NAME, O_RDONLY)) < 0) {
-			log_write("ERROR OPENING PIPE FOR READING");
-			continue;
-		}
+		
 		//select(task_pipe_fd+1, &read_task_pipe, NULL, NULL, NULL) > 0 && 
 		//read message from the named pipe if a task was sent
-		if((read_len = read(task_pipe_fd, msg, MSG_LEN)) >= 0){
+		if((read_len = read(task_pipe_fd, msg, MSG_LEN)) > 0){
 			msg[read_len] = '\0';
 			#ifdef DEBUG_TM
 			printf("%s read from task pipe\n", msg);
@@ -306,7 +308,6 @@ void read_from_task_pipe(){
 			}
 			
 		}
-		close(task_pipe_fd);
 	}
 }
 
@@ -329,6 +330,15 @@ int task_manager(){
 		unnamed_pipe[i] = (int*) malloc(2 * sizeof(int));
 		pipe(unnamed_pipe[i]);
 	}
+	
+	pthread_mutexattr_init(&vcpu_free_mutex_attr);
+	pthread_mutexattr_setpshared(&vcpu_free_mutex_attr, PTHREAD_PROCESS_SHARED);
+	pthread_mutex_init(&vcpu_free_mutex, &vcpu_free_mutex_cond);
+	
+	pthread_condattr_init(&vcpu_free_cond_attr);
+	pthread_condattr_setpshared(&vcpu_free_cond_attr, PTHREAD_PROCESS_SHARED);
+	pthread_cond_init(&vcpu_free_cond, &vcpu_free_cond_attr);
+	
 	//create edge server processes
 	for(i = 0; i < edge_server_number; i++){
 		//create edge server number i
@@ -348,6 +358,13 @@ int task_manager(){
 	pthread_create(&scheduler_thread, NULL, scheduler, NULL);
 	//create dispatcher thread
 	pthread_create(&dispatcher_thread, NULL, dispatcher, NULL);
+	
+	//opens the pipe in read-write mode for the function read
+	//to block while waiting for new tasks to arrive
+	if ((task_pipe_fd = open(PIPE_NAME, O_RDWR)) < 0) {
+		log_write("ERROR OPENING PIPE FOR READING");
+		continue;
+	}
 	
 	read_from_task_pipe();
 	
