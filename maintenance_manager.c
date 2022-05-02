@@ -39,7 +39,7 @@ void * maintenance(void *t){
         msg.msg_type = mm_msg_type;
         strcpy(msg.msg_text, "START");
         msgsnd(mqid, &msg, sizeof(Message) - sizeof(long), 0);
-        msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), es_msg_type, 0);
+        msgrcv(mqid, &msg, sizeof(Message), es_msg_type, 0);
         sleep(interval_of_mm);
         msg.msg_type = mm_msg_type;
         strcpy(msg.msg_text, "END");

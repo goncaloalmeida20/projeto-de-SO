@@ -35,7 +35,7 @@ int create_shm(){
 	//create shared memory
 	//the shared memory will include one integer (a flag for the monitor to change
 	//the perforce mode of the edge servers) and edge_server_number edge servers
-	if((shmid = shmget(IPC_PRIVATE, sizeof(int) * 3 + edge_server_number*sizeof(EdgeServer), IPC_CREAT | 0700)) < 0){
+	if((shmid = shmget(IPC_PRIVATE, sizeof(int) + edge_server_number*sizeof(EdgeServer), IPC_CREAT | 0700)) < 0){
 		log_write("ERROR CREATING SHARED MEMORY");
 		return -1;
 	}	
@@ -66,19 +66,20 @@ void shm_unlock(){
 	sem_post(shm_mutex);
 }
 
+
 EdgeServer get_edge_server(int n){
 	//return a pointer to the edge server number n in the shared memory
-	return *(((EdgeServer*)(shared_var + 3)) + n - 1);
+	return *(((EdgeServer*)(shared_var + 1)) + n - 1);
 }
+
 
 void set_edge_server(EdgeServer* es, int n){
 	//get a pointer to the edge server number n in the shared memory
-	EdgeServer* edge_server_n = ((EdgeServer*)(shared_var + 3)) + n - 1;
+	EdgeServer* edge_server_n = ((EdgeServer*)(shared_var + 1)) + n - 1;
 	
 	//store the changes made to the edge server
 	*edge_server_n = *es;
 }
-
 
 int get_performance_change_flag(){
 	//return the performance change flag which is the 
@@ -91,33 +92,6 @@ void set_performance_change_flag(int pcf){
 	//first integer stored in the shared memory
 	*shared_var = pcf;
 }
-
-
-int get_tm_percentage(){
-    //return the percentage of tasks within the task manager
-    //which is the second integer stored in the shared memory
-    return *(shared_var + 1);
-}
-
-void set_tm_percentage(int p){
-    //store the new percentage of tasks within the task manager
-    //which is the second integer stored in the shared memory
-    *(shared_var + 1) = p;
-}
-
-
-int get_min_wait_time(){
-    //return the minimum wait time for a new task be executed
-    //which is the third integer stored in the shared memory
-    return *(shared_var + 2);
-}
-
-void set_min_wait_time(int t){
-    //store the minimum wait time for a new task be executed
-    //which is the third integer stored in the shared memory
-    *(shared_var + 2) = t;
-}
-
 
 void print_stats(){
 

@@ -3,8 +3,6 @@ Realizado por:
 João Bernardo de Jesus Santos, nº2020218995
 Gonçalo Fernandes Diogo de Almeida, nº2020218868
 */
-
-#include <time.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -28,7 +26,7 @@ int edge_server_n, wait_for_all_tasks_done = 0, start_min = 0, start_max = 0, mi
 int performance_level, min_capacity, max_capacity, maintenance_done = 1;
 char es_name[NAME_LEN];
 pthread_mutex_t maintenance_mutex = PTHREAD_MUTEX_INITIALIZER, tasks_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t maintenance_signal = PTHREAD_COND_INITIALIZER, free_signal = PTHREAD_COND_INITIALIZER;
+pthread_cond_t maintenance_signal = PTHREAD_COND_INITIALIZER, maintenance_done_signal = PTHREAD_COND_INITIALIZER, free_signal = PTHREAD_COND_INITIALIZER;
 pthread_cond_t vcpu_min_signal = PTHREAD_COND_INITIALIZER, vcpu_max_signal = PTHREAD_COND_INITIALIZER;
 pthread_t vcpu_min_thread, vcpu_max_thread, maintenance_thread, performance_thread, task_thread;
 
@@ -143,11 +141,11 @@ void * enter_maintenance(void * t){
     int mm_msg_type = edge_server_n * 2 + 1, es_msg_type = edge_server_n * 2, previous_performance_level;
 
     while(1){
-        msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), mm_msg_type, 0);
+        msgrcv(mqid, &msg, sizeof(Message), mm_msg_type, 0);
         shm_lock();
         EdgeServer this = get_edge_server(edge_server_n);
-        previous_performance_level = this.performance_level;
         this.performance_level = 0;
+        previous_performance_level = this.performance_level;
         set_edge_server(&this, edge_server_n);
         shm_unlock();
 		
@@ -163,20 +161,12 @@ void * enter_maintenance(void * t){
 
         msg.msg_type = es_msg_type;
         strcpy(msg.msg_text, "START");
-        msgsnd(mqid, &msg, sizeof(Message) - sizeof(long), 0);
+        msgsnd(mqid, &msg, sizeof(Message), 0);
         sprintf(log, "THE EDGE SERVER %s IS NOW ON MAINTENANCE", es_name);
         log_write(log);
         
-        // Wait for the maintenance to end
-        msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), mm_msg_type, 0);
-
-        // Send maintenance done signal and get performance flag
-        pthread_mutex_lock(&maintenance_mutex);
-        pthread_cond_signal(&maintenance_done_signal);
-        pthread_mutex_unlock(&maintenance_mutex);
-        msg.msg_type = es_msg_type;
-        strcpy(msg.msg_text, "END");
-        msgsnd(mqid, &msg, sizeof(Message) - sizeof(long), 0);
+        //TODO: wait for the maintenance to end
+        //TODO: send maintenance_done_signal when done
     }
 
     pthread_exit(NULL);
@@ -205,8 +195,8 @@ int edge_server(int es_n){
 	shm_lock();
 	EdgeServer this = get_edge_server(edge_server_n);
 	strcpy(es_name, this.name);
-	min_capacity = this.min.processing_capacity;
-	max_capacity = this.max.processing_capacity;
+	min_capacity = this.processing_capacity_min;
+	max_capacity = this.processing_capacity_max;
 	this.performance_level = performance_level;
 	set_edge_server(&this, edge_server_n);
 	shm_unlock();
@@ -229,7 +219,7 @@ int edge_server(int es_n){
     printf("%ld %s\n", mm_msg.msg_type, mm_msg.msg_text);
 	pthread_create(&vcpu_min_thread, NULL, vcpu_min, NULL);
 	pthread_create(&vcpu_max_thread, NULL, vcpu_max, NULL);
-	pthread_create(&maintenance_thread, NULL, enter_maintenance, NULL);
+	//pthread_create(&maintenance_thread, NULL, enter_maintenance, NULL);
 	pthread_create(&performance_thread, NULL, check_performance, NULL);
 	pthread_create(&task_thread, NULL, receive_tasks, NULL);
 	

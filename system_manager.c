@@ -54,7 +54,7 @@ int read_file(FILE *fp){
 
         if(edge_server_number >= 2){
             for(; i < edge_server_number; i++){
-                if(fscanf(fp," %[^,] , %d , %d ", edge_servers[i].name, &edge_servers[i].min.processing_capacity, &edge_servers[i].max.processing_capacity) != 3){
+                if(fscanf(fp," %[^,] , %d , %d ", edge_servers[i].name, &edge_servers[i].processing_capacity_min, &edge_servers[i].processing_capacity_max) != 3){
         			log_write("FORMAT ERROR IN CONFIG FILE");
         			return -1;
         		}
@@ -86,10 +86,6 @@ void clean_resources(){
     msgctl(mqid, IPC_RMID, 0);
     unlink(PIPE_NAME);
     close_shm();
-    pthread_cond_destroy(&monitor_cond);
-    pthread_condattr_destroy(&attrcondv);
-    pthread_mutex_destroy(&monitor_mutex);
-    pthread_mutexattr_destroy(&attrmutex);
     close_log();
 }
 
@@ -177,21 +173,7 @@ int main(int argc, char *argv[]){
 	}
 	printf("Performance change flag: %d\n", get_performance_change_flag());
 	shm_unlock();
-    #endif
-
-    // Initialize attribute of mutex
-    pthread_mutexattr_init(&attrmutex);
-    pthread_mutexattr_setpshared(&attrmutex, PTHREAD_PROCESS_SHARED);
-
-    // Initialize attribute of condition variable
-    pthread_condattr_init(&attrcondv);
-    pthread_condattr_setpshared(&attrcondv, PTHREAD_PROCESS_SHARED);
-
-    // Initialize mutex
-    pthread_mutex_init(&monitor_mutex, &attrmutex);
-
-    // Initialize condition variables
-    pthread_cond_init(&monitor_cond, &attrcondv);
+	#endif
 
     // Create Task Manager
     if(fork() == 0) {
