@@ -194,13 +194,12 @@ void* dispatcher(void *t){
 		
 		//Check which servers have free vcpus
 		for(i = 0; i < edge_server_number; i++){
-		
 			#ifdef DEBUG_TM
 			printf("Checking edge server %d\n", i+1);
 			#endif
 			EdgeServer es = get_edge_server(i+1);
 			if(es.performance_level == 0) continue;
-			if((es.performance_level > 0 && es.next_available_time_min < ct) || (es.performance_level == 2 && es.next_available_time_max < ct)){
+            if((es.performance_level > 0 && es.min.next_available_time < ct) || (es.performance_level == 2 && es.max.next_available_time < ct)){
 				#ifdef DEBUG_TM
 				printf("Dispatcher: new task will be sent to Edge Server %s\n", es.name);
 				#endif
