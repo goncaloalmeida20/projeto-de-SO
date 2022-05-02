@@ -5,6 +5,8 @@
 */
 
 #include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
 #include "monitor.h"
 #include "shared_memory.h"
 
@@ -27,5 +29,6 @@ void monitor(){
             set_performance_change_flag(1);
             shm_unlock();
         }
+        sleep(1);
     }
 }

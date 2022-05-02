@@ -10,6 +10,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <pthread.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <sys/shm.h>
@@ -211,7 +212,7 @@ int main(int argc, char *argv[]){
     // Create Maintenance Manager
     if(fork() == 0){
         log_write("PROCESS MAINTENANCE MANAGER CREATED");
-        maintenance_manager(mqid, edge_server_number);
+        //maintenance_manager(mqid, edge_server_number);
         exit(0);
     }
 
