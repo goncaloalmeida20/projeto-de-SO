@@ -5,8 +5,8 @@
 */
 
 #include <stdio.h>
-#include <pthread.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "monitor.h"
 #include "shared_memory.h"
 

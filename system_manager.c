@@ -1,7 +1,7 @@
 /*
-Realizado por:
-João Bernardo de Jesus Santos, nº2020218995
-Gonçalo Fernandes Diogo de Almeida, nº2020218868
+    Realizado por:
+        João Bernardo de Jesus Santos, nº2020218995
+        Gonçalo Fernandes Diogo de Almeida, nº2020218868
 */
 
 #include <stdio.h>
@@ -86,11 +86,11 @@ void clean_resources(){
     for(i = 0; i < nprocs; i++) wait(NULL);
     msgctl(mqid, IPC_RMID, 0);
     unlink(PIPE_NAME);
-    close_shm();
     pthread_cond_destroy(&monitor_cond);
     pthread_condattr_destroy(&attrcondv);
     pthread_mutex_destroy(&monitor_mutex);
     pthread_mutexattr_destroy(&attrmutex);
+    close_shm();
     close_log();
 }
 
@@ -179,6 +179,7 @@ int main(int argc, char *argv[]){
 		#endif
 		set_edge_server(&edge_servers[i], i+1);
 	}
+
 	// Set the performance change flag to 0 (normal)
 	set_performance_change_flag(0);
 	shm_unlock();

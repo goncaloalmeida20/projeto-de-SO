@@ -1,15 +1,15 @@
 /*
-Realizado por:
-João Bernardo de Jesus Santos, nº2020218995
-Gonçalo Fernandes Diogo de Almeida, nº2020218868
+    Realizado por:
+        João Bernardo de Jesus Santos, nº2020218995
+        Gonçalo Fernandes Diogo de Almeida, nº2020218868
 */
 
 #include <time.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
 #include <string.h>
 #include <signal.h>
 #include <pthread.h>
@@ -79,7 +79,7 @@ void *vcpu_max(){
 	while(1){
 		//Wait for task to arrive
 		pthread_mutex_lock(&tasks_mutex);
-		printf("BBBBBBBBBBBBBB\n");
+		printf("BBBBBBBOBBBBBB\n");
 		while(!max_start)
 			pthread_cond_wait(&tasks_cond, &tasks_mutex);
 		t = current_task;
@@ -211,11 +211,11 @@ void * check_performance(void * t){
     int pl;
     while(1){
         pl = get_performance_change_flag();
-        if(pl == 1){
-
-        } else if (pl == 2) {
-
-        }
+        shm_lock();
+        EdgeServer this = get_edge_server(edge_server_n);
+        this.performance_level = pl;
+        set_edge_server(&this, edge_server_n);
+        shm_unlock();
         sleep(1);
     }
     pthread_exit(NULL);
@@ -251,7 +251,8 @@ int edge_server(int es_n){
         log_write(inf);
     }
     //log_write(strerror(errno));
-    printf("%ld %s\n", mm_msg.msg_type, mm_msg.msg_text);
+    //printf("%ld %s\n", mm_msg.msg_type, mm_msg.msg_text);
+
 	pthread_create(&vcpu_min_thread, NULL, vcpu_min, NULL);
 	pthread_create(&vcpu_max_thread, NULL, vcpu_max, NULL);
 	pthread_create(&maintenance_thread, NULL, enter_maintenance, NULL);

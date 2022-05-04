@@ -1,21 +1,21 @@
 /*
-Realizado por:
-João Bernardo de Jesus Santos, nº2020218995
-Gonçalo Fernandes Diogo de Almeida, nº2020218868
+    Realizado por:
+        João Bernardo de Jesus Santos, nº2020218995
+        Gonçalo Fernandes Diogo de Almeida, nº2020218868
 */
 
+#include <time.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <pthread.h>
-#include <semaphore.h>
 #include <sys/wait.h>
-#include <unistd.h>
-#include <fcntl.h>
+#include <semaphore.h>
+#include "log.h"
 #include "task_manager.h"
 #include "shared_memory.h"
-#include "log.h"
 
 typedef struct{
     long id;
@@ -107,7 +107,7 @@ void check_expired(double current_time){
 	}
 }
 
-void* scheduler(void *t){
+void* scheduler(){
 	#ifdef BREAK_TM
 	pthread_exit(NULL);
 	#endif
@@ -184,7 +184,7 @@ int check_free_edge_servers(){
 }
 
 
-void* dispatcher(void *t){
+void* dispatcher(){
 	int i;
 	//fd_set read_pipes;
 	while(1){

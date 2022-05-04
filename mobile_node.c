@@ -1,29 +1,29 @@
 /*
-Realizado por:
-João Bernardo de Jesus Santos, nº2020218995
-Gonçalo Fernandes Diogo de Almeida, nº2020218868
+    Realizado por:
+        João Bernardo de Jesus Santos, nº2020218995
+        Gonçalo Fernandes Diogo de Almeida, nº2020218868
 */
 
+#include <math.h>
 #include <stdio.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <math.h>
 
 //#define DEBUG //uncomment this line to print debug messages
 #define MSG_LEN 100
 #define PIPE_NAME "TASK_PIPE"
 
-//number of digits of a number
-//e.g. 10->2, 2000->4, 555->3
+// Number of digits of a number
+// e.g. 10->2, 2000->4, 555->3
 int digits(int n){
 	int i;
 	for(i = 0; n != 0; n/=10, i++);
 	return i;
 }
 
-//generate a task id based on current process id and the
-//size of n_requests
+// Generate a task id based on current process id and the
+// size of n_requests
 long generate_task_id(int n_requests, int i){
 	return getpid() * pow(10, digits(n_requests)) + i;
 }	

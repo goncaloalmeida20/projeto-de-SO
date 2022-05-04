@@ -1,13 +1,13 @@
 /*
-Realizado por:
-João Bernardo de Jesus Santos, nº2020218995
-Gonçalo Fernandes Diogo de Almeida, nº2020218868
+    Realizado por:
+        João Bernardo de Jesus Santos, nº2020218995
+        Gonçalo Fernandes Diogo de Almeida, nº2020218868
 */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <time.h>
 #include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <semaphore.h>
 #include "log.h"
 

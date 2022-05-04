@@ -62,8 +62,8 @@ void maintenance_manager(int mq_id, int es_num) {
     for(i = 0; i < edge_server_number; i++)
     {
         es_msg_type = (i + 1) * 2;
-        // Waits for a message with its id
-        msgrcv(mqid, &msg, sizeof(Message), es_msg_type, 0);
+        // Waits for a message
+        msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), es_msg_type, 0);
     }
 
     mm_thread = (pthread_t *) malloc(sizeof(pthread_t) * edge_server_number);

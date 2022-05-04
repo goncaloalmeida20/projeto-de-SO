@@ -1,7 +1,7 @@
 /*
-Realizado por:
-João Bernardo de Jesus Santos, nº2020218995
-Gonçalo Fernandes Diogo de Almeida, nº2020218868
+    Realizado por:
+        João Bernardo de Jesus Santos, nº2020218995
+        Gonçalo Fernandes Diogo de Almeida, nº2020218868
 */
 
 #include <stdio.h>
@@ -32,7 +32,7 @@ int create_shm_mutex(){
 }
 
 int create_shm(){
-	//create shared memory
+	// Create shared memory
 	//the shared memory will include one integer (a flag for the monitor to change
 	//the perforce mode of the edge servers) and edge_server_number edge servers
     if((shmid = shmget(IPC_PRIVATE, sizeof(int) * 3 + edge_server_number*sizeof(EdgeServer), IPC_CREAT | 0700)) < 0){
