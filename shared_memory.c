@@ -35,7 +35,7 @@ int create_shm(){
 	// Create shared memory
 	//the shared memory will include one integer (a flag for the monitor to change
 	//the perforce mode of the edge servers) and edge_server_number edge servers
-    if((shmid = shmget(IPC_PRIVATE, sizeof(int) * 3 + edge_server_number*sizeof(EdgeServer), IPC_CREAT | 0700)) < 0){
+    if((shmid = shmget(IPC_PRIVATE, sizeof(int) * 3 + edge_server_number*sizeof(EdgeServer) + sizeof(pthread_mutex_t) + sizeof(pthread_cond_t), IPC_CREAT | 0700)) < 0){
 		log_write("ERROR CREATING SHARED MEMORY");
 		return -1;
 	}	
@@ -116,6 +116,14 @@ void set_min_wait_time(int t){
     //store the minimum wait time for a new task be executed
     //which is the third integer stored in the shared memory
     *(shared_var + 2) = t;
+}
+
+pthread_mutex_t* get_dispatcher_mutex(){
+	return (pthread_mutex_t*)(((EdgeServer*)(shared_var + 3)) + edge_server_number);
+}
+
+pthread_cond_t* get_dispatcher_cond(){
+	return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(shared_var + 3)) + edge_server_number)+1);
 }
 
 void print_stats(){

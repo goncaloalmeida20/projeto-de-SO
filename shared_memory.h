@@ -38,6 +38,8 @@ int get_tm_percentage();
 void set_tm_percentage(int p);
 int get_min_wait_time();
 void set_min_wait_time(int t);
+pthread_mutex_t* get_dispatcher_mutex();
+pthread_cond_t* get_dispatcher_cond();
 void print_stats();
 
 

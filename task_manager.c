@@ -115,9 +115,7 @@ void* scheduler(){
 	#endif
 	double current_time;
 	while(1){
-		printf("sch\n");
 		pthread_mutex_lock(&queue_mutex);
-		printf("SCH\n");
 		//wait for new task to arrive
 		while(!scheduler_start){
 			#ifdef DEBUG_TM
@@ -152,19 +150,18 @@ void* scheduler(){
 		scheduler_start = 0;
 		pthread_mutex_unlock(&queue_mutex);
 		
-		
 		//Signal dispatcher if it is waiting 
-		pthread_mutex_lock(&dispatcher_mutex);
-		pthread_cond_signal(&dispatcher_cond);
-		pthread_mutex_unlock(&dispatcher_mutex);
+		pthread_mutex_lock(dispatcher_mutex);
+		pthread_cond_signal(dispatcher_cond);
+		pthread_mutex_unlock(dispatcher_mutex);
 	}
 	pthread_exit(NULL);
 }
 
 
 int enough_time_left(VCPU *v, Task *t, double ct){
-	printf("ct%lf at%lf\n", ct, v->next_available_time);
-	return ct > v->next_available_time && ct + ((double)t->thousand_inst)/1000/(v->processing_capacity*1000000) < t->arrival_time + t->max_exec_time;
+	//printf("ct%lf at%lf th%d prcp%d tempo%lf\n", ct, v->next_available_time, t->thousand_inst,  v->processing_capacity, t->thousand_inst/1000.0/v->processing_capacity);
+	return ct > v->next_available_time && ct + t->thousand_inst/1000.0/v->processing_capacity < t->arrival_time + t->max_exec_time;
 }
 
 
@@ -222,14 +219,12 @@ void* dispatcher(){
 	VCPUTask t;
 	int min_priority;
 	int es;
+	char * es_name;
 	
 	while(1){
 		min_priority = 0;
-		printf("disp1\n");
 		pthread_mutex_lock(&queue_mutex);
-		printf("disp2\n");
-		pthread_mutex_lock(&dispatcher_mutex);
-		printf("disp3\n");
+		pthread_mutex_lock(dispatcher_mutex);
 		//Check if there are tasks in the task queue and free vcpus
 		//If not, wait
 		while(queue_size == 0 || !check_free_edge_servers()){
@@ -237,7 +232,7 @@ void* dispatcher(){
 			printf("Dispatcher waiting for signal\n");
 			#endif
 			pthread_mutex_unlock(&queue_mutex);
-			pthread_cond_wait(&dispatcher_cond, &dispatcher_mutex);
+			pthread_cond_wait(dispatcher_cond, dispatcher_mutex);
 			pthread_mutex_lock(&queue_mutex);
 			#ifdef DEBUG_TM
 			printf("Dispatcher received signal\n");
@@ -254,34 +249,37 @@ void* dispatcher(){
 				break;
 			}
 			
-			sprintf(msg, "TASK %ld REMOVED FROM QUEUE (NOT ENOUGH TIME LEFT TO EXECUTE)", queue[min_priority].id);
+			sprintf(msg, "DISPATCHER: TASK %ld REMOVED FROM QUEUE (NOT ENOUGH TIME LEFT TO EXECUTE)", queue[min_priority].id);
 			log_write(msg);
 			remove_task_from_queue(&queue[min_priority]);
 			
 		}
 		if(!es){
 			printf("dsp No task selected\n");
-			pthread_mutex_unlock(&dispatcher_mutex);	
+			pthread_mutex_unlock(dispatcher_mutex);	
 			pthread_mutex_unlock(&queue_mutex);
 			continue;
 		}
 		
-		#ifdef DEBUG_TM
-		printf("Dispatcher selected task %ld for execution\n", queue[min_priority].id);
-		#endif
 		t.id = queue[min_priority].id;
 		t.done = 0;
 		t.thousand_inst = queue[min_priority].thousand_inst;
 		remove_task_from_queue(&queue[min_priority]);
 		
+		//get the name of the server where the task will be executed
+		shm_lock();
+		es_name = get_edge_server(es).name;
+		shm_unlock();
+		
+		sprintf(msg, "DISPATCHER: TASK %d SELECTED FOR EXECUTION ON %s", t.id, es_name);
+		log_write(msg);
+		
 		//Send task
 		write(unnamed_pipe[es-1][1], &t, sizeof(VCPUTask));
-	
-		pthread_mutex_unlock(&dispatcher_mutex);
 		
 		pthread_mutex_unlock(&queue_mutex);
 		
-		
+		pthread_mutex_unlock(dispatcher_mutex);	
 	}
 	pthread_exit(NULL);
 }
@@ -303,8 +301,8 @@ void clean_tm_resources(){
 	
 	pthread_mutex_destroy(&queue_mutex);
 	pthread_cond_destroy(&scheduler_cond);
-	pthread_cond_destroy(&dispatcher_cond);
-	pthread_mutex_destroy(&dispatcher_mutex);
+	pthread_cond_destroy(dispatcher_cond);
+	pthread_mutex_destroy(dispatcher_mutex);
 	pthread_mutexattr_destroy(&mutexattr); 
 	pthread_condattr_destroy(&condattr);
 	free(queue);
@@ -313,9 +311,10 @@ void clean_tm_resources(){
 
 void read_from_task_pipe(){
 	int read_len;
-	char msg[MSG_LEN], msg_temp[MSG_LEN*2];
+	Task t;
+	char msg[MSG_LEN], msg_temp[MSG_LEN*2], msg_aux[MSG_LEN];
 	while(1){
-		//read message from the named pipe
+		/*//read message from the named pipe
 		if((read_len = read(task_pipe_fd, msg, MSG_LEN)) > 0){
 			msg[read_len] = '\0';
 			#ifdef DEBUG_TM
@@ -328,7 +327,6 @@ void read_from_task_pipe(){
 				t.priority = 0;
 				
 				//add task to queue and signal scheduler that a new task has arrived
-				printf("WAIT FOR MUTEX\n");
 				pthread_mutex_lock(&queue_mutex);
 				if(add_task_to_queue(&t) == 0){
 					sprintf(msg, "TASK %ld ADDED TO THE QUEUE", t.id);
@@ -338,7 +336,6 @@ void read_from_task_pipe(){
 					pthread_cond_signal(&scheduler_cond);				
 				}
 				pthread_mutex_unlock(&queue_mutex);	
-				printf("HEUHDAIDDJEADA\n");
 			}else if(strcmp(msg, "STATS") == 0){
 				log_write("PRINT STATS");
 				print_stats();
@@ -352,6 +349,57 @@ void read_from_task_pipe(){
 			
 		}else{
 			log_write("ERROR READING FROM TASK PIPE");
+		}*/
+		
+		//read the first 4 bytes to check if the message is the command "EXIT"
+		if((read_len = read(task_pipe_fd, msg, 4)) > 0){
+			msg[read_len] = '\0';
+			//check if the message is the command "EXIT"
+			if(strcmp(msg, "EXIT") == 0){
+				log_write("EXIT");
+				break;
+			}
+			//the message isn't "EXIT", so the next byte is read to check if it is equal to "STATS"
+			if((read_len = read(task_pipe_fd, msg_aux, 1)) > 0){
+				//concatenate the new byte to the original message
+				msg_aux[read_len] = '\0';
+				strcat(msg, msg_aux);
+				
+				//check if the message is the command "STATS"
+				if(strcmp(msg, "STATS") == 0){
+					log_write("PRINT STATS");
+					print_stats();
+					continue;
+				}
+				
+				//the message isn't "STATS" either, so read the remaining bytes to check if it is a task
+				if((read_len = read(task_pipe_fd, msg_aux, MSG_LEN-5)) > 0){
+					msg_aux[read_len] = '\0';
+					strcat(msg, msg_aux);
+					//check if the message is a task
+					if(sscanf(msg, "%ld;%d;%lf", &t.id, &t.thousand_inst, &t.max_exec_time) == 3){
+						//new task arrived
+						t.arrival_time = get_current_time();
+						t.priority = 0;
+						
+						//add task to queue and signal scheduler that a new task has arrived
+						pthread_mutex_lock(&queue_mutex);
+						if(add_task_to_queue(&t) == 0){
+							sprintf(msg, "TASK %ld ADDED TO THE QUEUE", t.id);
+							log_write(msg);
+							//signal scheduler that a new task has arrived
+							scheduler_start = 1;
+							pthread_cond_signal(&scheduler_cond);				
+						}
+						pthread_mutex_unlock(&queue_mutex);	
+					}else{ //the message is not a task either, so it is a wrong command
+						sprintf(msg_temp, "WRONG COMMAND => %s", msg);
+						log_write(msg_temp);
+					}
+				}
+			}
+		}else{
+			log_write("ERROR READING FROM TASK PIPE");
 		}
 	}
 }
@@ -359,16 +407,13 @@ void read_from_task_pipe(){
 int task_manager(){
 	int i;
 	
-	
 	//create task queue
 	queue = (Task *)malloc(queue_pos * sizeof(Task));
 	if(queue == NULL){
 		log_write("ERROR ALLOCATING MEMORY FOR TASK MANAGER QUEUE");
 		return -1;
 	}
-	#ifdef DEBUG_TM
-	printf("Creating edge servers...\n");
-	#endif
+
 	
 	//create pipes
 	unnamed_pipe = (int**) malloc(edge_server_number * sizeof(int*));
@@ -377,13 +422,19 @@ int task_manager(){
 		pipe(unnamed_pipe[i]);
 	}
 	
+	//create the process shared mutex and conditional variable to synchronize the dispatcher
+	dispatcher_mutex = get_dispatcher_mutex();
+	dispatcher_cond = get_dispatcher_cond();
 	pthread_mutexattr_init(&mutexattr);
 	pthread_mutexattr_setpshared(&mutexattr, PTHREAD_PROCESS_SHARED);
-	pthread_mutex_init(&dispatcher_mutex, &mutexattr);
-	
+	pthread_mutex_init(dispatcher_mutex, &mutexattr);
 	pthread_condattr_init(&condattr);
 	pthread_condattr_setpshared(&condattr, PTHREAD_PROCESS_SHARED);
-	pthread_cond_init(&dispatcher_cond, &condattr);
+	pthread_cond_init(dispatcher_cond, &condattr);
+
+	#ifdef DEBUG_TM
+	printf("Creating edge servers...\n");
+	#endif
 	
 	//create edge server processes
 	for(i = 0; i < edge_server_number; i++){
@@ -393,7 +444,6 @@ int task_manager(){
 			exit(0);
 		}
 	}
-	
 	
 	queue_size = 0;
 	

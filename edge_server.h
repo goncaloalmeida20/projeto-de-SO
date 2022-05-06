@@ -7,7 +7,7 @@
 #ifndef EDGE_SERVER_H
 #define EDGE_SERVER_H
 
-#define DEBUG_ES //uncomment this line to print edge_server debug messages
+//#define DEBUG_ES //uncomment this line to print edge_server debug messages
 
 typedef struct{
 	int id, done, thousand_inst;
@@ -16,8 +16,8 @@ typedef struct{
 int mqid;
 int **unnamed_pipe;
 
-pthread_mutex_t dispatcher_mutex;
-pthread_cond_t dispatcher_cond;
+pthread_mutex_t *dispatcher_mutex;
+pthread_cond_t *dispatcher_cond;
 
 double get_current_time();
 int edge_server(int es_n);
