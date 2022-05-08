@@ -312,15 +312,15 @@ void clean_tm_resources(){
 void read_from_task_pipe(){
 	int read_len;
 	Task t;
-	char msg[MSG_LEN], msg_temp[MSG_LEN*2], msg_aux[MSG_LEN];
+	char msg[MSG_LEN], msg_temp[MSG_LEN*2];
 	while(1){
-		/*//read message from the named pipe
+		//read message from the named pipe
 		if((read_len = read(task_pipe_fd, msg, MSG_LEN)) > 0){
 			msg[read_len] = '\0';
 			#ifdef DEBUG_TM
 			printf("%s read from task pipe\n", msg);
 			#endif
-			Task t;
+			//check if the message is a new task or a command
 			if(sscanf(msg, "%ld;%d;%lf", &t.id, &t.thousand_inst, &t.max_exec_time) == 3){
 				//new task arrived
 				t.arrival_time = get_current_time();
@@ -336,10 +336,10 @@ void read_from_task_pipe(){
 					pthread_cond_signal(&scheduler_cond);				
 				}
 				pthread_mutex_unlock(&queue_mutex);	
-			}else if(strcmp(msg, "STATS") == 0){
+			}else if(read_len == 6 && strncmp(msg, "STATS", 5) == 0){
 				log_write("PRINT STATS");
 				print_stats();
-			}else if(strcmp(msg, "EXIT") == 0){
+			}else if(read_len == 5 && strncmp(msg, "EXIT", 4) == 0){
 				log_write("EXIT");
 				break;
 			}else{
@@ -349,22 +349,30 @@ void read_from_task_pipe(){
 			
 		}else{
 			log_write("ERROR READING FROM TASK PIPE");
-		}*/
-		
+		}
+		/*
 		//read the first 4 bytes to check if the message is the command "EXIT"
 		if((read_len = read(task_pipe_fd, msg, 4)) > 0){
 			msg[read_len] = '\0';
 			//check if the message is the command "EXIT"
+			printf("MSG %s %d\n", msg, read_len);
+			printf("%c\n%c\n%c\n%c\n",msg[0],msg[1],msg[2],msg[3]);
 			if(strcmp(msg, "EXIT") == 0){
 				log_write("EXIT");
 				break;
+			}
+			//check if the message is a wrong command
+			if(!('0' < msg[0] && msg[0] < '9') && strcmp(msg, "STAT") != 0){
+				sprintf(msg_temp, "WRONG COMMAND => %s", msg);
+				log_write(msg_temp);
+				continue;
 			}
 			//the message isn't "EXIT", so the next byte is read to check if it is equal to "STATS"
 			if((read_len = read(task_pipe_fd, msg_aux, 1)) > 0){
 				//concatenate the new byte to the original message
 				msg_aux[read_len] = '\0';
 				strcat(msg, msg_aux);
-				
+				printf("MSG AUX1 %s\n", msg_aux);
 				//check if the message is the command "STATS"
 				if(strcmp(msg, "STATS") == 0){
 					log_write("PRINT STATS");
@@ -376,6 +384,7 @@ void read_from_task_pipe(){
 				if((read_len = read(task_pipe_fd, msg_aux, MSG_LEN-5)) > 0){
 					msg_aux[read_len] = '\0';
 					strcat(msg, msg_aux);
+					printf("MSG AUX2 %s\n", msg_aux);
 					//check if the message is a task
 					if(sscanf(msg, "%ld;%d;%lf", &t.id, &t.thousand_inst, &t.max_exec_time) == 3){
 						//new task arrived
@@ -400,7 +409,7 @@ void read_from_task_pipe(){
 			}
 		}else{
 			log_write("ERROR READING FROM TASK PIPE");
-		}
+		}*/
 	}
 }
 
