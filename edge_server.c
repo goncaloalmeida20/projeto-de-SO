@@ -205,6 +205,7 @@ void * enter_maintenance(void * t){
         EdgeServer this = get_edge_server(edge_server_n);
         previous_performance_level = this.performance_level;
         this.performance_level = 0;
+        this.n_maintenances++;
         set_edge_server(&this, edge_server_n);
         shm_unlock();
 
@@ -264,6 +265,8 @@ int edge_server(int es_n){
     min_capacity = this.min.processing_capacity;
     max_capacity = this.max.processing_capacity;
 	this.performance_level = performance_level;
+    this.n_maintenances = 0;
+    this.n_tasks_done = 0;
 	set_edge_server(&this, edge_server_n);
 	shm_unlock();
 	

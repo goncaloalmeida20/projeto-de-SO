@@ -275,6 +275,7 @@ void* dispatcher(){
 		log_write(msg);
 		
 		//Send task
+        close(unnamed_pipe[i][0]);
 		write(unnamed_pipe[es-1][1], &t, sizeof(VCPUTask));
 		
 		pthread_mutex_unlock(&queue_mutex);
@@ -294,6 +295,7 @@ void clean_tm_resources(){
 	
 	//clean unnamed pipe resources
 	for(i = 0; i < edge_server_number; i++){
+        close(unnamed_pipe[i][0]);
 		close(unnamed_pipe[i][1]);
 		free(unnamed_pipe[i]);
 	}
