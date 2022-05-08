@@ -24,14 +24,14 @@
 #include "maintenance_manager.h"
 
 
-int edge_server_n, wait_for_all_tasks_done = 0, min_start = 0, max_start = 0;
-int performance_level, min_capacity, max_capacity, maintenance_done = 1;
+int edge_server_n, wait_for_all_tasks_done = 0, vcpu_start[2];
+int performance_level, vcpu_capacity[2], maintenance_done = 1, ids[2];
 VCPUTask current_task;
 char es_name[NAME_LEN];
 pthread_mutex_t maintenance_mutex = PTHREAD_MUTEX_INITIALIZER, tasks_mutex = PTHREAD_MUTEX_INITIALIZER, free_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t maintenance_signal = PTHREAD_COND_INITIALIZER, maintenance_done_signal = PTHREAD_COND_INITIALIZER, free_cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t tasks_cond = PTHREAD_COND_INITIALIZER;
-pthread_t vcpu_min_thread, vcpu_max_thread, maintenance_thread, performance_thread, task_thread;
+pthread_t vcpu_thread[2], maintenance_thread, performance_thread, task_thread;
 
 double get_current_time(){
 	struct timespec ts;
@@ -43,12 +43,13 @@ double task_time_sec(int capacity, int thousand_inst){
 	return thousand_inst/1000.0/capacity;
 }
 
-void *vcpu_min(){
+void *vcpu(void *vcpu_id){
+	int id = *((int*)vcpu_id);
 	VCPUTask t;
 	while(1){
 		//Wait for task to arrive
 		pthread_mutex_lock(&tasks_mutex);
-		while(!min_start)
+		while(!vcpu_start[id])
 			pthread_cond_wait(&tasks_cond, &tasks_mutex);
 		t = current_task;
 		pthread_mutex_unlock(&tasks_mutex);
@@ -58,15 +59,15 @@ void *vcpu_min(){
 		#endif
 		
 		//Execute task
-		usleep(1000000*task_time_sec(min_capacity, t.thousand_inst));
+		usleep(1000000*task_time_sec(vcpu_capacity[id], t.thousand_inst));
 		
 		//Task done
 		char msg[MSG_LEN];
-		sprintf(msg, "%s:TASK %d COMPLETED", es_name, t.id);
+		sprintf(msg, "%s VCPU %d:TASK %d COMPLETED", es_name, id, t.id);
 		log_write(msg);
 		
 		pthread_mutex_lock(&free_mutex);
-		min_start = 0;
+		vcpu_start[id] = 0;
 		pthread_cond_signal(&free_cond);
 		pthread_mutex_unlock(&free_mutex);
 		
@@ -81,42 +82,9 @@ void *vcpu_min(){
     pthread_exit(NULL);
 }
 
-void *vcpu_max(){
-	VCPUTask t;
-	while(1){
-		//Wait for task to arrive
-		pthread_mutex_lock(&tasks_mutex);
-		while(!max_start)
-			pthread_cond_wait(&tasks_cond, &tasks_mutex);
-		t = current_task;
-		pthread_mutex_unlock(&tasks_mutex);
-		
-		//Execute task
-		usleep(1000000*task_time_sec(max_capacity, t.thousand_inst));
-		
-		//Task done
-		char msg[MSG_LEN];
-		sprintf(msg, "%s:TASK %d COMPLETED", es_name, t.id);
-		log_write(msg);
-		
-		pthread_mutex_lock(&free_mutex);
-		max_start = 0;
-		pthread_cond_signal(&free_cond);
-		pthread_mutex_unlock(&free_mutex);
-		
-		/*//Check if maintenance is going to happen
-    	pthread_mutex_lock(&maintenance_mutex);
-    	if(wait_for_all_tasks_done > 0){
-    		wait_for_all_tasks_done--;
-     		pthread_cond_signal(&maintenance_signal);
-    	}
-    	pthread_mutex_unlock(&maintenance_mutex);*/
-    }
-    pthread_exit(NULL);
-}
 
 int ready_to_receive_task(){
-	return performance_level != 0 && (!min_start || (performance_level == 2 && !max_start));
+	return performance_level != 0 && (!vcpu_start[0] || (performance_level == 2 && !vcpu_start[1]));
 }
 
 void *receive_tasks(){
@@ -125,8 +93,7 @@ void *receive_tasks(){
 	int first = 1;
 	shm_lock();
 	this = get_edge_server(edge_server_n);
-	this.max.next_available_time = 0;
-	this.min.next_available_time = 0;
+	for(int i = 0; i < 2; i++) this.vcpu[i].next_available_time = 0;
 	set_edge_server(&this, edge_server_n);
 	shm_unlock();
 	while(1){
@@ -134,7 +101,7 @@ void *receive_tasks(){
 		while(!ready_to_receive_task())
 			pthread_cond_wait(&free_cond, &free_mutex);
 		pthread_mutex_unlock(&free_mutex);
-		
+
 		if(first) first = 0;
 		else{
 			pthread_mutex_lock(dispatcher_mutex);
@@ -154,30 +121,47 @@ void *receive_tasks(){
 		pthread_mutex_lock(&tasks_mutex);
 		current_task = t;
 		double ct = get_current_time();
-		if(!min_start){
+		#ifdef DEBUG_ES
+		printf("%s: Sending task %d to %d\n", es_name, t.id, t.vcpu);
+		#endif
+		shm_lock();
+		this = get_edge_server(edge_server_n);
+		this.vcpu[t.vcpu].next_available_time = ct + task_time_sec(this.vcpu[t.vcpu].processing_capacity, current_task.thousand_inst);
+		set_edge_server(&this, edge_server_n);
+		shm_unlock();
+		vcpu_start[t.vcpu] = 1;
+		pthread_cond_broadcast(&tasks_cond);
+		pthread_mutex_unlock(&tasks_mutex);
+		/*if(!vcpu_start[0]){
 			#ifdef DEBUG_ES
 			printf("%s: Sending task %d to minvcpu\n", es_name, t.id);
 			#endif
 			shm_lock();
 			this = get_edge_server(edge_server_n);
-			this.min.next_available_time = ct + task_time_sec(this.min.processing_capacity, current_task.thousand_inst);
+			this.vcpu[0].next_available_time = ct + task_time_sec(this.vcpu[0].processing_capacity, current_task.thousand_inst);
 			set_edge_server(&this, edge_server_n);
 			shm_unlock();
-			min_start = 1;
+			vcpu_start[0] = 1;
 			pthread_cond_broadcast(&tasks_cond);
 			pthread_mutex_unlock(&tasks_mutex);
-		}else if(performance_level == 2 && !max_start){
+		}else if(performance_level == 2 && !vcpu_start[1]){
 			#ifdef DEBUG_ES
 			printf("%s: Sending task %d to maxvcpu\n", es_name, t.id);
 			#endif
 			shm_lock();
 			this = get_edge_server(edge_server_n);
-			this.max.next_available_time = ct + task_time_sec(this.max.processing_capacity, current_task.thousand_inst);
+			this.vcpu[1].next_available_time = ct + task_time_sec(this.vcpu[1].processing_capacity, current_task.thousand_inst);
+			set_edge_server(&this, edge_server_n);
 			shm_unlock();
-			max_start = 1;
+			vcpu_start[1] = 1;
 			pthread_cond_broadcast(&tasks_cond);
 			pthread_mutex_unlock(&tasks_mutex);
-		}else log_write("NO FREE VCPU FOUND");
+		}else log_write("NO FREE VCPU FOUND");*/
+		
+		pthread_mutex_lock(dispatcher_mutex);
+		printf("%s: SENDING SIGNAL\n", es_name);
+		pthread_cond_signal(dispatcher_cond);
+		pthread_mutex_unlock(dispatcher_mutex);
 		
 	}
 	pthread_exit(NULL);
@@ -186,8 +170,7 @@ void *receive_tasks(){
 
 void clean_es_resources(){
     pthread_join(performance_thread, NULL);
-	pthread_join(vcpu_min_thread, NULL);
-	pthread_join(vcpu_max_thread, NULL);
+    for(int i = 0; i < 2; i++) pthread_join(vcpu_thread[i], NULL);
     pthread_mutex_destroy(&tasks_mutex);
     pthread_join(task_thread, NULL);
 	pthread_join(maintenance_thread, NULL);
@@ -257,13 +240,12 @@ int edge_server(int es_n){
 	char msg[MSG_LEN];
 	edge_server_n = es_n;
 	
-	performance_level = 1;
+	performance_level = 2;
 	
 	shm_lock();
 	EdgeServer this = get_edge_server(edge_server_n);
 	strcpy(es_name, this.name);
-    min_capacity = this.min.processing_capacity;
-    max_capacity = this.max.processing_capacity;
+    for(int i = 0; i < 2; i++) vcpu_capacity[i] = this.vcpu[i].processing_capacity;
 	this.performance_level = performance_level;
     this.n_maintenances = 0;
     this.n_tasks_done = 0;
@@ -286,9 +268,11 @@ int edge_server(int es_n){
     }
     //log_write(strerror(errno));
     //printf("%ld %s\n", mm_msg.msg_type, mm_msg.msg_text);
-
-	pthread_create(&vcpu_min_thread, NULL, vcpu_min, NULL);
-	pthread_create(&vcpu_max_thread, NULL, vcpu_max, NULL);
+	for(int i = 0; i < 2; i++){
+		ids[i] = i;
+		pthread_create(&vcpu_thread[i], NULL, vcpu, &ids[i]);
+	}
+	
 	//pthread_create(&maintenance_thread, NULL, enter_maintenance, NULL);
 	//pthread_create(&performance_thread, NULL, check_performance, NULL);
 	pthread_create(&task_thread, NULL, receive_tasks, NULL);

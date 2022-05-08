@@ -45,7 +45,7 @@ int main(int argc, char *argv[]){
 	
 	// Opens the pipe for writing
 	if ((fd = open(PIPE_NAME, O_WRONLY)) < 0) {
-		perror("Cannot open pipe for writing: ");
+		perror("Cannot open pipe for writing");
 		exit(0);
 	}	
 	

@@ -158,6 +158,15 @@ void* scheduler(){
 	pthread_exit(NULL);
 }
 
+int server_updated(double old_available_time, int es_n, int vcpu_n) {
+	//check if the server updated its vcpu next available time
+	shm_lock();
+	double new_available_time = get_edge_server(es_n).vcpu[vcpu_n].next_available_time;
+	shm_unlock();
+	//printf("SERVER UPDATED %lf %lf\n", old_available_time, new_available_time);
+	return new_available_time != old_available_time;
+}
+
 
 int enough_time_left(VCPU *v, Task *t, double ct){
 	//printf("ct%lf at%lf th%d prcp%d tempo%lf\n", ct, v->next_available_time, t->thousand_inst,  v->processing_capacity, t->thousand_inst/1000.0/v->processing_capacity);
@@ -165,7 +174,7 @@ int enough_time_left(VCPU *v, Task *t, double ct){
 }
 
 
-int get_free_edge_server(Task *t){
+int get_free_edge_server(Task *t, int *free_vcpu){
 	int i;
 	double ct = get_current_time();		
 	//Check which servers have free vcpus
@@ -176,11 +185,20 @@ int get_free_edge_server(Task *t){
 		shm_lock();
 		EdgeServer es = get_edge_server(i+1);
 		if(es.performance_level == 0) continue;
-        if((es.performance_level > 0 && enough_time_left(&es.min, t, ct)) || (es.performance_level == 2 && enough_time_left(&es.max, t, ct))){
+        if(es.performance_level > 0 && enough_time_left(&es.vcpu[0], t, ct)){
 			#ifdef DEBUG_TM
-			printf("Dispatcher: Selecting Edge Server %s\n", es.name);
+			printf("Dispatcher: Selecting Edge Server %s VCPU: 0\n", es.name);
 			#endif
 			shm_unlock();
+			*free_vcpu = 0;
+			return i+1;
+		}
+		if(es.performance_level == 2 && enough_time_left(&es.vcpu[1], t, ct)){
+			#ifdef DEBUG_TM
+			printf("Dispatcher: Selecting Edge Server %s VCPU: 1\n", es.name);
+			#endif
+			shm_unlock();
+			*free_vcpu = 1;
 			return i+1;
 		}
 		shm_unlock();
@@ -201,7 +219,7 @@ int check_free_edge_servers(){
 		shm_lock();
 		EdgeServer es = get_edge_server(i+1);
 		if(es.performance_level == 0) continue;
-        if((es.performance_level > 0 && es.min.next_available_time < ct) || (es.performance_level == 2 && es.max.next_available_time < ct)){
+        if((es.performance_level > 0 && es.vcpu[0].next_available_time < ct) || (es.performance_level == 2 && es.vcpu[1].next_available_time < ct)){
 			#ifdef DEBUG_TM
 			printf("Dispatcher: There are free edge servers (%s)\n", es.name);
 			#endif
@@ -240,12 +258,13 @@ void* dispatcher(){
 		}
 		
 		es = 0;
+		int free_vcpu = -1;
 		while(queue_size > 0){
 			for(i = 0; i < queue_size; i++){
 				if(queue[i].priority < queue[min_priority].priority)
 					min_priority = i;
 			}
-			if((es = get_free_edge_server(&queue[min_priority]))){
+			if((es = get_free_edge_server(&queue[min_priority], &free_vcpu))){
 				break;
 			}
 			
@@ -254,7 +273,7 @@ void* dispatcher(){
 			remove_task_from_queue(&queue[min_priority]);
 			
 		}
-		if(!es){
+		if(!es || free_vcpu == -1){
 			printf("dsp No task selected\n");
 			pthread_mutex_unlock(dispatcher_mutex);	
 			pthread_mutex_unlock(&queue_mutex);
@@ -264,21 +283,29 @@ void* dispatcher(){
 		t.id = queue[min_priority].id;
 		t.done = 0;
 		t.thousand_inst = queue[min_priority].thousand_inst;
+		t.vcpu = free_vcpu;
 		remove_task_from_queue(&queue[min_priority]);
 		
 		//get the name of the server where the task will be executed
 		shm_lock();
-		es_name = get_edge_server(es).name;
+		EdgeServer es_task = get_edge_server(es);
+		es_name = es_task.name;
+		
+		double es_old_available_time = es_task.vcpu[free_vcpu].next_available_time;
+		//printf("DSP %lf %s %d\n", es_old_available_time, es_name, free_vcpu);
 		shm_unlock();
 		
 		sprintf(msg, "DISPATCHER: TASK %d SELECTED FOR EXECUTION ON %s", t.id, es_name);
 		log_write(msg);
 		
 		//Send task
-        close(unnamed_pipe[i][0]);
 		write(unnamed_pipe[es-1][1], &t, sizeof(VCPUTask));
 		
 		pthread_mutex_unlock(&queue_mutex);
+		
+		while(!server_updated(es_old_available_time, es, free_vcpu)){
+			pthread_cond_wait(dispatcher_cond, dispatcher_mutex);
+		}
 		
 		pthread_mutex_unlock(dispatcher_mutex);	
 	}
@@ -295,7 +322,6 @@ void clean_tm_resources(){
 	
 	//clean unnamed pipe resources
 	for(i = 0; i < edge_server_number; i++){
-        close(unnamed_pipe[i][0]);
 		close(unnamed_pipe[i][1]);
 		free(unnamed_pipe[i]);
 	}
@@ -451,9 +477,11 @@ int task_manager(){
 	for(i = 0; i < edge_server_number; i++){
 		//create edge server number i
 		if(fork() == 0){
+			//close(unnamed_pipe[i][1]);
 			edge_server(i+1);
 			exit(0);
 		}
+		//close(unnamed_pipe[i][0]);
 	}
 	
 	queue_size = 0;

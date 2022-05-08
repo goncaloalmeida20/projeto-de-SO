@@ -37,7 +37,7 @@ int create_shm(){
 	// the performance mode of the edge servers, the percentage of tasks within the task manager,
     // the minimum wait time for a new task be executed, the total number of executed and not executed tasks)
     // the average time of response by a task and edge_server_number edge servers
-    if((shmid = shmget(IPC_PRIVATE, sizeof(int) * 5 + sizeof(float) + edge_server_number*sizeof(EdgeServer) + sizeof(pthread_mutex_t) + sizeof(pthread_cond_t), IPC_CREAT | 0700)) < 0){
+    if((shmid = shmget(IPC_PRIVATE, sizeof(int) * 4 + sizeof(float) + edge_server_number*sizeof(EdgeServer) + sizeof(pthread_mutex_t) + sizeof(pthread_cond_t), IPC_CREAT | 0700)) < 0){
 		log_write("ERROR CREATING SHARED MEMORY");
 		return -1;
 	}	
@@ -70,14 +70,14 @@ void shm_unlock(){
 
 
 EdgeServer get_edge_server(int n){
-	//return a pointer to the edge server number n in the shared memory
-	return *(((EdgeServer*)(shared_var + 6)) + n - 1);
+	//return the edge server number n in the shared memory
+	return *(((EdgeServer*)(((float*)(shared_var + 4))+1)) + n - 1);
 }
 
 
 void set_edge_server(EdgeServer* es, int n){
 	//get a pointer to the edge server number n in the shared memory
-	EdgeServer* edge_server_n = ((EdgeServer*)(shared_var + 6)) + n - 1;
+	EdgeServer* edge_server_n = ((EdgeServer*)(((float*)(shared_var + 4))+1)) + n - 1;
 	
 	//store the changes made to the edge server
 	*edge_server_n = *es;
@@ -120,50 +120,51 @@ void set_min_wait_time(int t){
     *(shared_var + 2) = t;
 }
 
-int get_n_executed_tasks(){
-    //return the total number of executed tasks
-    //which is the forth integer stored in the shared memory
-    return *(shared_var + 3);
-}
-
-void set_n_executed_tasks(int n){
-    //store the total number of executed tasks
-    //which is the forth integer stored in the shared memory
-    *(shared_var + 3) = n;
-}
-
 int get_n_not_executed_tasks(){
     //return the total number of not executed tasks
     //which is the fifth integer stored in the shared memory
-    return *(shared_var + 4);
+    return *(shared_var + 3);
 }
 
 void set_n_not_executed_tasks(int n){
     //store the total number of not executed tasks
     //which is the fifth integer stored in the shared memory
-    *(shared_var + 4) = n;
+    *(shared_var + 3) = n;
 }
 
 float get_avg_res_time(){
     //return the average time of response by a task
     //which is a float stored in the shared memory
-    return *(((float*)(shared_var + 5)));
+    return *((float*)(shared_var + 4));
 }
 
 void set_avg_res_time(float * t){
     //store the average time of response by a task
     //which is a float stored in the shared memory
-    float* avg_res_time = ((float*)(shared_var + 5));
+    float* avg_res_time = ((float*)(shared_var + 4));
     *avg_res_time = *t;
 }
 
 
 pthread_mutex_t* get_dispatcher_mutex(){
-	return (pthread_mutex_t*)(((EdgeServer*)(shared_var + 3)) + edge_server_number);
+	return (pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number);
 }
 
 pthread_cond_t* get_dispatcher_cond(){
-	return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(shared_var + 3)) + edge_server_number)+1);
+	return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number)+1);
+}
+
+int get_n_executed_tasks(){
+    //return the total number of executed tasks
+    int sum = 0;
+    shm_lock();
+    for(int i = 0; i < edge_server_number; i++){
+        EdgeServer this = get_edge_server(i);
+        sum += this.n_tasks_done;
+        
+    }
+    shm_unlock();
+    return sum;
 }
 
 void print_stats(){
@@ -173,19 +174,17 @@ void print_stats(){
     n_exec_tasks = get_n_executed_tasks();
     n_not_exec_tasks = get_n_not_executed_tasks();
     avg_time_of_res = get_avg_res_time();
-    shm_unlock();
     printf("Number of executed tasks: %d\n", n_exec_tasks);
     printf("Number of not executed tasks: %d\n", n_not_exec_tasks);
     printf("Average time of response by a task: %f\n", avg_time_of_res);
     printf("Number of tasks executed and number of maintenances done in each Edge Server:\n");
     for(i = 1; i <= edge_server_number; i++){
-        shm_lock();
         EdgeServer this = get_edge_server(i);
         n_maintenances = this.n_maintenances;
         n_tasks_done = this.n_tasks_done;
-        shm_unlock();
         printf("Edge server %d:\n\tNumber of tasks executed: %d\n\tNumber of maintenances done: %d\n", i, n_tasks_done, n_maintenances);
     }
+    shm_unlock();
 }
 
 void close_shm_mutex(){

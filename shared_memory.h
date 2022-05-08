@@ -17,7 +17,7 @@ typedef struct {
 typedef struct {
     char name[NAME_LEN];
     int performance_level, task_exec, op_main; // Performance level, number of tasks executed and number of maintenance operations
-    VCPU min, max;
+    VCPU vcpu[2];
     int n_maintenances, n_tasks_done;
 }EdgeServer;
 
@@ -39,14 +39,13 @@ int get_tm_percentage();
 void set_tm_percentage(int p);
 int get_min_wait_time();
 void set_min_wait_time(int t);
-int get_n_executed_tasks();
-void set_n_executed_tasks(int n);
 int get_n_not_executed_tasks();
 void set_n_not_executed_tasks(int n);
 float get_avg_res_time();
 void set_avg_res_time(float * t);
 pthread_mutex_t* get_dispatcher_mutex();
 pthread_cond_t* get_dispatcher_cond();
+int get_n_executed_tasks();
 void print_stats();
 
 

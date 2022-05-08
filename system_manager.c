@@ -55,12 +55,12 @@ int read_file(FILE *fp){
 
         if(edge_server_number >= 2){
             for(; i < edge_server_number; i++){
-                if(fscanf(fp," %[^,] , %d , %d ", edge_servers[i].name, &edge_servers[i].min.processing_capacity, &edge_servers[i].max.processing_capacity) != 3){
+                if(fscanf(fp," %[^,] , %d , %d ", edge_servers[i].name, &edge_servers[i].vcpu[0].processing_capacity, &edge_servers[i].vcpu[1].processing_capacity) != 3){
         			log_write("FORMAT ERROR IN CONFIG FILE");
         			return -1;
         		}
                 #ifdef DEBUG
-                printf("Just read from config file the edge server: %s,%d,%d\n", edge_servers[i].name, edge_servers[i].processing_capacity_min, edge_servers[i].processing_capacity_max);
+                printf("Just read from config file the edge server: %s,%d,%d\n", edge_servers[i].name, &edge_servers[i].vcpu[0].processing_capacity, &edge_servers[i].vcpu[1].processing_capacity);
                 #endif
             }
         }
@@ -190,7 +190,7 @@ int main(int argc, char *argv[]){
 	printf("Checking shared memory contents...\n");
 	for(i = 0; i < edge_server_number; i++){
 		EdgeServer es = get_edge_server(i+1);
-		printf("Edge Server %d: %s %d %d\n", i+1, es.name, es.processing_capacity_min, es.processing_capacity_max);
+		printf("Edge Server %d: %s %d %d\n", i+1, es.name, es.vcpu[0].processing_capacity, es.vcpu[1].processing_capacity);
 	}
 	printf("Performance change flag: %d\n", get_performance_change_flag());
 	shm_unlock();
