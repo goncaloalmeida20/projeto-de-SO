@@ -29,6 +29,8 @@
 EdgeServer * edge_servers;
 int nprocs = 3; // Task Manager, Monitor and Maintenance Manager
 int task_pipe_fd;
+sigset_t block_set;
+struct sigaction new_action, old_action;
 
 int read_file(FILE *fp){
     int i = 0;
@@ -94,13 +96,14 @@ void clean_resources(){
     close_log();
 }
 
-void sigint(int signum) { // handling of CTRL-C
-    clean_resources();
-    exit(0);
-}
-
-void sigtstp(int signum) { // handling of CTRL-Z
-    print_stats();
+void termination_handler(int signum) {
+    if(signum == SIGINT){ // handling of CTRL-C
+        clean_resources();
+        exit(0);
+    }
+    else if(signum == SIGTSTP){ // handling of CTRL-Z
+        print_stats();
+    }
 }
 
 int main(int argc, char *argv[]){
@@ -111,12 +114,15 @@ int main(int argc, char *argv[]){
         exit(1);
     }
 
-    // Server terminates when CTRL-C is pressed
-    // Redirect CTRL-C
-    signal(SIGINT, sigint);
+    sigfillset(&block_set); // will have all possible signals blocked when our handler is called
 
-    // Redirect CTRL-Z
-    signal(SIGTSTP, sigtstp);
+    //define a handler for SIGINT and SIGTSTP; when entered all possible signals are blocked
+    new_action.sa_flags = 0;
+    new_action.sa_mask = block_set;
+    new_action.sa_handler = &termination_handler;
+
+    sigaction(SIGINT,&new_action,NULL);
+    sigaction(SIGTSTP,&new_action,NULL);
 	
 	#ifdef DEBUG
 	printf("Creating log...\n");
