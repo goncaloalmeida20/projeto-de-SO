@@ -54,6 +54,8 @@ void log_write(char *s){
 	//write message in the file
 	fprintf(f, "%02d:%02d:%02d %s\n", time_now->tm_hour, time_now->tm_min, time_now->tm_sec, s);
 
+	fflush(f);
+
 	sem_post(log_mutex);
 }
 

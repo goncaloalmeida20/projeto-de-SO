@@ -157,13 +157,10 @@ pthread_cond_t* get_dispatcher_cond(){
 int get_n_executed_tasks(){
     //return the total number of executed tasks
     int sum = 0;
-    shm_lock();
     for(int i = 0; i < edge_server_number; i++){
         EdgeServer this = get_edge_server(i);
         sum += this.n_tasks_done;
-        
     }
-    shm_unlock();
     return sum;
 }
 
