@@ -113,7 +113,7 @@ int main(int argc, char *argv[]){
         printf("WRONG NUMBER OF PARAMETERS\n");
         exit(1);
     }
-
+    /*
     sigfillset(&block_set); // will have all possible signals blocked when our handler is called
 
     //define a handler for SIGINT and SIGTSTP; when entered all possible signals are blocked
@@ -123,6 +123,7 @@ int main(int argc, char *argv[]){
 
     sigaction(SIGINT,&new_action,NULL);
     sigaction(SIGTSTP,&new_action,NULL);
+     */
 	
 	#ifdef DEBUG
 	printf("Creating log...\n");
