@@ -29,6 +29,10 @@
 EdgeServer * edge_servers;
 int nprocs = 3; // Task Manager, Monitor and Maintenance Manager
 int task_pipe_fd;
+pthread_mutexattr_t monitor_attrmutex;
+pthread_condattr_t monitor_attrcondv;
+pthread_mutexattr_t perf_ch_attrmutex;
+pthread_condattr_t perf_ch_attrcondv;
 sigset_t block_set;
 struct sigaction new_action, old_action;
 
@@ -88,10 +92,14 @@ void clean_resources(){
     for(i = 0; i < nprocs; i++) wait(NULL);
     msgctl(mqid, IPC_RMID, 0);
     unlink(PIPE_NAME);
-    pthread_cond_destroy(&monitor_cond);
-    pthread_condattr_destroy(&attrcondv);
-    pthread_mutex_destroy(&monitor_mutex);
-    pthread_mutexattr_destroy(&attrmutex);
+    pthread_cond_destroy(monitor_cond);
+    pthread_condattr_destroy(&monitor_attrcondv);
+    pthread_mutex_destroy(monitor_mutex);
+    pthread_mutexattr_destroy(&monitor_attrmutex);
+    pthread_cond_destroy(performance_changed_cond);
+    pthread_condattr_destroy(&perf_ch_attrcondv);
+    pthread_mutex_destroy(performance_changed_mutex);
+    pthread_mutexattr_destroy(&perf_ch_attrmutex);
     close_shm();
     close_log();
 }
@@ -140,25 +148,32 @@ int main(int argc, char *argv[]){
 	#ifdef DEBUG
 	printf("Creating shared memory...\n");
     #endif
-
-    // Initialize attribute of mutex
-    pthread_mutexattr_init(&attrmutex);
-    pthread_mutexattr_setpshared(&attrmutex, PTHREAD_PROCESS_SHARED);
-
-    // Initialize attribute of condition variable
-    pthread_condattr_init(&attrcondv);
-    pthread_condattr_setpshared(&attrcondv, PTHREAD_PROCESS_SHARED);
-
-    // Initialize mutex
-    pthread_mutex_init(&monitor_mutex, &attrmutex);
-
-    // Initialize condition variables
-    pthread_cond_init(&monitor_cond, &attrcondv);
-
-    // Shared memory created
+	// Shared memory created
     if(create_shm() < 0) {
         exit(1);
     }
+
+	monitor_mutex = get_monitor_mutex();
+    // Initialize monitor mutex
+    pthread_mutexattr_init(&monitor_attrmutex);
+    pthread_mutexattr_setpshared(&monitor_attrmutex, PTHREAD_PROCESS_SHARED);
+	pthread_mutex_init(monitor_mutex, &monitor_attrmutex);
+    monitor_cond = get_monitor_cond();
+    // Initialize monitor condition variable
+    pthread_condattr_init(&monitor_attrcondv);
+    pthread_condattr_setpshared(&monitor_attrcondv, PTHREAD_PROCESS_SHARED);
+    pthread_cond_init(monitor_cond, &monitor_attrcondv);
+    
+    performance_changed_mutex = get_performance_changed_mutex();
+    // Initialize performance changed mutex
+    pthread_mutexattr_init(&perf_ch_attrmutex);
+    pthread_mutexattr_setpshared(&perf_ch_attrmutex, PTHREAD_PROCESS_SHARED);
+	pthread_mutex_init(performance_changed_mutex, &perf_ch_attrmutex);
+    performance_changed_cond = get_performance_changed_cond();
+    // Initialize performance changed condition variable
+    pthread_condattr_init(&perf_ch_attrcondv);
+    pthread_condattr_setpshared(&perf_ch_attrcondv, PTHREAD_PROCESS_SHARED);
+    pthread_cond_init(performance_changed_cond, &perf_ch_attrcondv);
 
     // Creates the named pipe if it doesn't exist yet
     unlink(PIPE_NAME);
@@ -220,7 +235,7 @@ int main(int argc, char *argv[]){
     // Create Maintenance Manager
     if(fork() == 0){
         log_write("PROCESS MAINTENANCE MANAGER CREATED");
-        //maintenance_manager(mqid, edge_server_number);
+        maintenance_manager(mqid, edge_server_number);
         exit(0);
     }
 

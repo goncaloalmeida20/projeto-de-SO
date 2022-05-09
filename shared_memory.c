@@ -37,7 +37,7 @@ int create_shm(){
 	// the performance mode of the edge servers, the percentage of tasks within the task manager,
     // the minimum wait time for a new task be executed, the total number of executed and not executed tasks)
     // the average time of response by a task and edge_server_number edge servers
-    if((shmid = shmget(IPC_PRIVATE, sizeof(int) * 4 + sizeof(float) + edge_server_number*sizeof(EdgeServer) + sizeof(pthread_mutex_t) * 2 + sizeof(pthread_cond_t) * 2, IPC_CREAT | 0700)) < 0){
+    if((shmid = shmget(IPC_PRIVATE, sizeof(int) * 4 + sizeof(float) + edge_server_number*sizeof(EdgeServer) + sizeof(pthread_mutex_t) * 3 + sizeof(pthread_cond_t) * 3, IPC_CREAT | 0700)) < 0){
 		log_write("ERROR CREATING SHARED MEMORY");
 		return -1;
 	}	
@@ -151,7 +151,7 @@ pthread_mutex_t* get_dispatcher_mutex(){
 }
 
 pthread_cond_t* get_dispatcher_cond(){
-	return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number)+2);
+	return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number)+3);
 }
 
 pthread_mutex_t* get_monitor_mutex(){
@@ -159,7 +159,15 @@ pthread_mutex_t* get_monitor_mutex(){
 }
 
 pthread_cond_t* get_monitor_cond(){
-    return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number)+2) + 1;
+    return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number)+3) + 1;
+}
+
+pthread_mutex_t* get_performance_changed_mutex(){
+    return (pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number) + 2;
+}
+
+pthread_cond_t* get_performance_changed_cond(){
+    return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number)+3) + 2;
 }
 
 int get_n_executed_tasks(){

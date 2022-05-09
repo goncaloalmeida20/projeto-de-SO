@@ -184,7 +184,11 @@ int get_free_edge_server(Task *t, int *free_vcpu){
 		#endif
 		shm_lock();
 		EdgeServer es = get_edge_server(i+1);
-		if(es.performance_level == 0) continue;
+		if(es.performance_level == 0){
+			shm_unlock();
+			continue;
+		}
+		 
         if(es.performance_level > 0 && enough_time_left(&es.vcpu[0], t, ct)){
 			#ifdef DEBUG_TM
 			printf("Dispatcher: Selecting Edge Server %s VCPU: 0\n", es.name);
@@ -218,7 +222,11 @@ int check_free_edge_servers(){
 		#endif
 		shm_lock();
 		EdgeServer es = get_edge_server(i+1);
-		if(es.performance_level == 0) continue;
+		//printf("DSP CHECK %s %d\n", es.name, es.performance_level);
+		if(es.performance_level == 0){
+		 shm_unlock();
+		 continue;
+        }
         if((es.performance_level > 0 && es.vcpu[0].next_available_time < ct) || (es.performance_level == 2 && es.vcpu[1].next_available_time < ct)){
 			#ifdef DEBUG_TM
 			printf("Dispatcher: There are free edge servers (%s)\n", es.name);
@@ -256,7 +264,7 @@ void* dispatcher(){
 			printf("Dispatcher received signal\n");
 			#endif
 		}
-		
+		//printf("adasdajs\n");
 		es = 0;
 		int free_vcpu = -1;
 		while(queue_size > 0){
@@ -279,7 +287,7 @@ void* dispatcher(){
 			pthread_mutex_unlock(&queue_mutex);
 			continue;
 		}
-		
+
 		t.id = queue[min_priority].id;
 		t.done = 0;
 		t.thousand_inst = queue[min_priority].thousand_inst;
@@ -477,11 +485,12 @@ int task_manager(){
 	for(i = 0; i < edge_server_number; i++){
 		//create edge server number i
 		if(fork() == 0){
-			//close(unnamed_pipe[i][1]);
+			close(unnamed_pipe[i][1]);
 			edge_server(i+1);
+			close(unnamed_pipe[i][0]);
 			exit(0);
 		}
-		//close(unnamed_pipe[i][0]);
+		close(unnamed_pipe[i][0]);
 	}
 	
 	queue_size = 0;

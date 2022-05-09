@@ -22,10 +22,10 @@ typedef struct {
 }EdgeServer;
 
 int edge_server_number, max_wait;
-pthread_mutexattr_t attrmutex;
-pthread_condattr_t attrcondv;
-pthread_mutex_t monitor_mutex;
-pthread_cond_t monitor_cond;
+pthread_mutex_t *monitor_mutex;
+pthread_cond_t *monitor_cond;
+pthread_mutex_t *performance_changed_mutex;
+pthread_cond_t *performance_changed_cond;
 
 int create_shm();
 void close_shm();
@@ -45,6 +45,10 @@ float get_avg_res_time();
 void set_avg_res_time(float * t);
 pthread_mutex_t* get_dispatcher_mutex();
 pthread_cond_t* get_dispatcher_cond();
+pthread_mutex_t* get_monitor_mutex();
+pthread_cond_t* get_monitor_cond();
+pthread_mutex_t* get_performance_changed_mutex();
+pthread_cond_t* get_performance_changed_cond();
 int get_n_executed_tasks();
 void print_stats();
 
