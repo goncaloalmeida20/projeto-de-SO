@@ -43,9 +43,22 @@ int add_task_to_queue(Task *t){
 	if(queue_size >= queue_pos){
 		sprintf(msg, "TASK %ld DELETED (THE TASK QUEUE IS FULL)", t->id);
 		log_write(msg);
+		shm_lock();
+		set_n_not_executed_tasks(get_n_not_executed_tasks() + 1);
+		shm_unlock();	
 		return -1;
 	}
 	queue[queue_size++] = *t;
+	shm_lock();
+	#ifdef DEBUG_TM
+	printf("Setting task queue percentage to %d\n", (int)(queue_size*100.0/queue_pos));
+	#endif
+	set_tm_percentage((int)(queue_size*100.0/queue_pos));
+	shm_unlock();
+	
+	pthread_mutex_lock(monitor_mutex);
+	pthread_cond_signal(monitor_cond);
+	pthread_mutex_unlock(monitor_mutex);
 	return 0;
 }
 
@@ -62,9 +75,21 @@ int remove_task_from_queue(Task *t){
 			for(j = i; j < queue_size; j++){
 				queue[j] = queue[j+1];
 			}
+			shm_lock();
+			#ifdef DEBUG_TM
+			printf("Setting task queue percentage to %d\n", (int)(queue_size*100.0/queue_pos));
+			#endif
+			set_tm_percentage((int)(queue_size*100.0/queue_pos));
+			shm_unlock();
+			
+			pthread_mutex_lock(monitor_mutex);
+			pthread_cond_signal(monitor_cond);
+			pthread_mutex_unlock(monitor_mutex);
 			return 0;
 		}
 	}
+	
+	
 	sprintf(msg, "ERROR REMOVING TASK FROM QUEUE: TASK %ld NOT FOUND", t->id);
 	log_write(msg);
 	return -1;
@@ -109,9 +134,6 @@ void check_expired(double current_time){
 }
 
 void* scheduler(){
-	#ifdef BREAK_TM
-	pthread_exit(NULL);
-	#endif
 	double current_time;
 	while(1){
 		pthread_mutex_lock(&queue_mutex);
@@ -239,12 +261,10 @@ int check_free_edge_servers(){
 }
 
 void* dispatcher(){
-	int i;
-	char msg[MSG_LEN];
+	int i, min_priority, es;
+	char msg[MSG_LEN], * es_name;
 	VCPUTask t;
-	int min_priority;
-	int es;
-	char * es_name;
+	double task_arrival_time, task_wait_time;
 	
 	while(1){
 		min_priority = 0;
@@ -264,30 +284,40 @@ void* dispatcher(){
 			printf("Dispatcher received signal\n");
 			#endif
 		}
-		//printf("adasdajs\n");
 		es = 0;
 		int free_vcpu = -1;
 		while(queue_size > 0){
+			//get the task with the most priority (the higher the priority, the lower the value)
 			for(i = 0; i < queue_size; i++){
 				if(queue[i].priority < queue[min_priority].priority)
 					min_priority = i;
 			}
+			
+			//choose the vcpu to execute the task
 			if((es = get_free_edge_server(&queue[min_priority], &free_vcpu))){
 				break;
 			}
 			
+			//no vcpu found with enough processing capacity needed to execute the task in the time left
+			shm_lock();
+			set_n_not_executed_tasks(get_n_not_executed_tasks() + 1);
+			shm_unlock();		
 			sprintf(msg, "DISPATCHER: TASK %ld REMOVED FROM QUEUE (NOT ENOUGH TIME LEFT TO EXECUTE)", queue[min_priority].id);
 			log_write(msg);
 			remove_task_from_queue(&queue[min_priority]);
 			
 		}
 		if(!es || free_vcpu == -1){
-			printf("dsp No task selected\n");
+			#ifdef DEBUG_TM
+			printf("Dispatcher: No task selected\n");
+			#endif
 			pthread_mutex_unlock(&queue_mutex);
 			pthread_mutex_unlock(dispatcher_mutex);	
 			continue;
 		}
-
+		
+		//get the information about the selected task to send to the chosen vcpu
+		task_arrival_time = queue[min_priority].arrival_time;
 		t.id = queue[min_priority].id;
 		t.done = 0;
 		t.thousand_inst = queue[min_priority].thousand_inst;
@@ -298,7 +328,6 @@ void* dispatcher(){
 		shm_lock();
 		EdgeServer es_task = get_edge_server(es);
 		es_name = es_task.name;
-		
 		double es_old_available_time = es_task.vcpu[free_vcpu].next_available_time;
 		//printf("DSP %lf %s %d\n", es_old_available_time, es_name, free_vcpu);
 		shm_unlock();
@@ -306,11 +335,27 @@ void* dispatcher(){
 		sprintf(msg, "DISPATCHER: TASK %d SELECTED FOR EXECUTION ON %s", t.id, es_name);
 		log_write(msg);
 		
-		//Send task
+		//calculate the time that the task had to wait before being sent
+		task_wait_time = get_current_time() - task_arrival_time;
+		#ifdef DEBUG_TM
+		printf("Setting waiting time to %d seconds (rounded up)\n", (int)(task_wait_time) + 1);
+		#endif
+		shm_lock();
+		set_min_wait_time((int)(task_wait_time) + 1);
+		int total_tasks = get_n_executed_tasks();
+		set_avg_res_time((get_avg_res_time()*total_tasks + task_wait_time)/ (total_tasks+1));
+		shm_unlock();
+		
+		pthread_mutex_lock(monitor_mutex);
+		pthread_cond_signal(monitor_cond);
+		pthread_mutex_unlock(monitor_mutex);
+		
+		//send task
 		write(unnamed_pipe[es-1][1], &t, sizeof(VCPUTask));
 		
 		pthread_mutex_unlock(&queue_mutex);
 		
+		//wait for the edge server to update its status before continuing
 		while(!server_updated(es_old_available_time, es, free_vcpu)){
 			pthread_cond_wait(dispatcher_cond, dispatcher_mutex);
 		}
@@ -511,25 +556,6 @@ int task_manager(){
 	}
 	
 	read_from_task_pipe();
-	
-	#ifdef TEST_TM
-	sleep(1);
-	Task t1 = {1,1,5,get_current_time(),1};
-	add_task_to_queue(&t1);
-	pthread_cond_signal(&scheduler_signal);
-	sleep(1);
-	Task t2 = {2,1,0.5,get_current_time(),1};
-	add_task_to_queue(&t2);
-	pthread_cond_signal(&scheduler_signal);
-	sleep(1);
-	Task t3 = {3,1,2,get_current_time(),1};
-	add_task_to_queue(&t3);
-	pthread_cond_signal(&scheduler_signal);
-	sleep(1);
-	Task t4 = {4,1,1.5,get_current_time(),1};
-	add_task_to_queue(&t4);
-	pthread_cond_signal(&scheduler_signal);
-	#endif
 	
 	clean_tm_resources();
 	return 0;

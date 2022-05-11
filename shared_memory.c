@@ -138,11 +138,11 @@ float get_avg_res_time(){
     return *((float*)(shared_var + 4));
 }
 
-void set_avg_res_time(float * t){
+void set_avg_res_time(float t){
     //store the average time of response by a task
     //which is a float stored in the shared memory
     float* avg_res_time = ((float*)(shared_var + 4));
-    *avg_res_time = *t;
+    *avg_res_time = t;
 }
 
 
@@ -174,7 +174,7 @@ int get_n_executed_tasks(){
     //return the total number of executed tasks
     int sum = 0;
     for(int i = 0; i < edge_server_number; i++){
-        EdgeServer this = get_edge_server(i);
+        EdgeServer this = get_edge_server(i+1);
         sum += this.n_tasks_done;
     }
     return sum;
@@ -189,7 +189,7 @@ void print_stats(){
     avg_time_of_res = get_avg_res_time();
     printf("Number of executed tasks: %d\n", n_exec_tasks);
     printf("Number of not executed tasks: %d\n", n_not_exec_tasks);
-    printf("Average time of response by a task: %f\n", avg_time_of_res);
+    printf("Average task response time: %f\n", avg_time_of_res);
     printf("Number of tasks executed and number of maintenances done in each Edge Server:\n");
     for(i = 1; i <= edge_server_number; i++){
         EdgeServer this = get_edge_server(i);

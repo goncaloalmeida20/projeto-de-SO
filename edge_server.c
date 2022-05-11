@@ -66,18 +66,16 @@ void *vcpu(void *vcpu_id){
 		sprintf(msg, "%s VCPU %d:TASK %d COMPLETED", es_name, id, t.id);
 		log_write(msg);
 		
+		shm_lock();
+		EdgeServer this = get_edge_server(edge_server_n);
+		this.n_tasks_done++;
+		set_edge_server(&this, edge_server_n);
+		shm_unlock();
+		
 		pthread_mutex_lock(&tasks_mutex);
 		vcpu_start[id] = 0;
 		pthread_cond_broadcast(&free_cond);
 		pthread_mutex_unlock(&tasks_mutex);
-		
-		/*//Check if maintenance is going to happen
-    	pthread_mutex_lock(&maintenance_mutex);
-    	if(wait_for_all_tasks_done > 0){
-    		wait_for_all_tasks_done--;
-     		pthread_cond_signal(&maintenance_signal);
-    	}
-    	pthread_mutex_unlock(&maintenance_mutex);*/
     }
     pthread_exit(NULL);
 }
@@ -161,8 +159,8 @@ int vcpus_finished_tasks(){
 void * enter_maintenance(void * t){
     Message msg;
     char log[MSG_LEN];
-    int mm_msg_type = edge_server_n * 2 + 1, es_msg_type = edge_server_n * 2;
-
+    int pl, mm_msg_type = edge_server_n * 2 + 1, es_msg_type = edge_server_n * 2;
+	
     while(1){
     	//printf("%s: waiting for maintenance\n", es_name);
         msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), mm_msg_type, 0);
@@ -178,6 +176,10 @@ void * enter_maintenance(void * t){
         	this.performance_level = 0;
         	set_edge_server(&this, edge_server_n);
         	shm_unlock();
+        	
+        	sprintf(log, "%s: CHANGED PERFORMANCE TO 0 (MAINTENANCE WILL START)", es_name); 
+        	log_write(log);
+        	
         	pthread_mutex_lock(&tasks_mutex);
         	// Wait until vcpus finish all tasks
         	while(!vcpus_finished_tasks()){
@@ -186,7 +188,8 @@ void * enter_maintenance(void * t){
         		//printf("%s: vft 2\n", es_name);
         	}
         	pthread_mutex_unlock(&tasks_mutex);
-
+			
+			//confirm that the maintenance start message has been received
         	msg.msg_type = es_msg_type;
         	strcpy(msg.msg_text, "START");
         	msgsnd(mqid, &msg, sizeof(Message) - sizeof(long), 0);
@@ -194,7 +197,7 @@ void * enter_maintenance(void * t){
         	log_write(log);
         	//printf("%s: pl %d\n", es_name, get_edge_server(edge_server_n).performance_level);
 		}else if(strcmp(msg.msg_text, "END") == 0){
-        	// Send maintenance done signal and get performance flag
+        	//end maintenance, reactivating the vcpus and restoring the performance level
         	//printf("%s: Received end\n", es_name);
         	pthread_mutex_lock(&maintenance_mutex);
         	maintenance_start = 0;
@@ -202,19 +205,27 @@ void * enter_maintenance(void * t){
         	
         	shm_lock();
         	EdgeServer this = get_edge_server(edge_server_n);
-        	this.performance_level = get_performance_change_flag();
+        	pl = get_performance_change_flag();
+        	this.performance_level = pl;
         	this.n_maintenances++;
         	set_edge_server(&this, edge_server_n);
         	shm_unlock();
-        	
+                
         	pthread_mutex_lock(&tasks_mutex);
         	pthread_cond_signal(&free_cond);
         	pthread_mutex_unlock(&tasks_mutex);
+        	
+        	//confirm that the maintenance end message has been received
         	msg.msg_type = es_msg_type;
         	strcpy(msg.msg_text, "END");
         	msgsnd(mqid, &msg, sizeof(Message) - sizeof(long), 0);
         	sprintf(log, "%s: ENDING MAINTENANCE", es_name);
         	log_write(log);
+        	
+        	sprintf(log, "%s: CHANGED PERFORMANCE BACK TO %d", es_name, pl); 
+        	log_write(log);
+        	
+        	
         }else log_write("INVALID MESSAGE RECEIVED FROM MAINTENANCE MANAGER");
     }
 
@@ -242,7 +253,6 @@ void * check_performance(void * t){
     char msg[MSG_LEN];
     while(1){    
     	pthread_mutex_lock(performance_changed_mutex);
-    	//if(maintenance_start) old_performance_change_flag = 0;
     	while(maintenance_ongoing() || !performance_changed()){
     		//printf("%s: CH PERF WAIT\n", es_name);
     		pthread_cond_wait(performance_changed_cond, performance_changed_mutex);
@@ -258,7 +268,7 @@ void * check_performance(void * t){
         set_edge_server(&this, edge_server_n);
         shm_unlock();
         
-        sprintf(msg, "%d: CHANGED PERFORMANCE TO %d", es_name, performance_change_flag); 
+        sprintf(msg, "%s: CHANGED PERFORMANCE TO %d", es_name, performance_change_flag); 
         log_write(msg);
                 
         pthread_mutex_lock(&tasks_mutex);
