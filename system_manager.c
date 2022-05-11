@@ -25,16 +25,17 @@
 #include "maintenance_manager.h"
 
 //#define DEBUG //uncomment this line to print debug messages
+#define N_PROCESSES 3
 
 EdgeServer * edge_servers;
-int nprocs = 3; // Task Manager, Monitor and Maintenance Manager
-int task_pipe_fd;
+int task_pipe_fd; // Task Manager, Monitor and Maintenance Manager
+pid_t task_manager_pid, monitor_pid, maintenance_manager_pid; 
 pthread_mutexattr_t monitor_attrmutex;
 pthread_condattr_t monitor_attrcondv;
 pthread_mutexattr_t perf_ch_attrmutex;
 pthread_condattr_t perf_ch_attrcondv;
 sigset_t block_set;
-struct sigaction new_action, old_action;
+struct sigaction new_action;
 
 int read_file(FILE *fp){
     int i = 0;
@@ -84,15 +85,16 @@ int read_file(FILE *fp){
 }
 
 void clean_resources(){
-    int i;
-    
-    #ifdef DEBUG
-	printf("Waiting for processes to finish...\n");
-	#endif
-    for(i = 0; i < nprocs; i++) wait(NULL);
+	printf("SM CR\n");
     msgctl(mqid, IPC_RMID, 0);
     unlink(PIPE_NAME);
+    printf("2\n");
+    pthread_cond_broadcast(monitor_cond);
+    printf("%d\n", monitor_cond->__data.__wrefs);
+    monitor_cond->__data.__wrefs = 0;
+    performance_changed_cond->__data.__wrefs = 0;
     pthread_cond_destroy(monitor_cond);
+    printf("3\n");
     pthread_condattr_destroy(&monitor_attrcondv);
     pthread_mutex_destroy(monitor_mutex);
     pthread_mutexattr_destroy(&monitor_attrmutex);
@@ -101,15 +103,21 @@ void clean_resources(){
     pthread_mutex_destroy(performance_changed_mutex);
     pthread_mutexattr_destroy(&perf_ch_attrmutex);
     close_shm();
+    log_write("SIMULATOR CLOSING");
     close_log();
 }
 
 void termination_handler(int signum) {
     if(signum == SIGINT){ // handling of CTRL-C
+    	log_write("SIGNAL SIGINT RECEIVED");
+    	kill(task_manager_pid, SIGINT);
+    	kill(monitor_pid, SIGINT);
+    	kill(maintenance_manager_pid, SIGINT);
         clean_resources();
         exit(0);
     }
     else if(signum == SIGTSTP){ // handling of CTRL-Z
+    	log_write("SIGNAL SIGTSTP RECEIVED");
         print_stats();
     }
 }
@@ -121,23 +129,16 @@ int main(int argc, char *argv[]){
         printf("WRONG NUMBER OF PARAMETERS\n");
         exit(1);
     }
-    /*
-    sigfillset(&block_set); // will have all possible signals blocked when our handler is called
-
-    //define a handler for SIGINT and SIGTSTP; when entered all possible signals are blocked
-    new_action.sa_flags = 0;
-    new_action.sa_mask = block_set;
-    new_action.sa_handler = &termination_handler;
-
-    sigaction(SIGINT,&new_action,NULL);
-    sigaction(SIGTSTP,&new_action,NULL);
-     */
-	
-	#ifdef DEBUG
+    
+    #ifdef DEBUG
 	printf("Creating log...\n");
 	#endif
     create_log();
-
+    
+    
+    
+	
+	
     // Read from config file
     if(read_file(fopen(argv[1], "r")) < 0) {
         exit(1);
@@ -219,26 +220,41 @@ int main(int argc, char *argv[]){
 	#endif
 
     // Create Task Manager
-    if(fork() == 0) {
+    if((task_manager_pid = fork()) == 0) {
         log_write("PROCESS TASK_MANAGER CREATED");
         task_manager();
         exit(0);
     }
 
     // Create Monitor
-    if(fork() == 0){
+    if((monitor_pid = fork()) == 0){
         log_write("PROCESS MONITOR CREATED");
         monitor();
         exit(0);
     }
 
     // Create Maintenance Manager
-    if(fork() == 0){
+    if((maintenance_manager_pid = fork()) == 0){
         log_write("PROCESS MAINTENANCE MANAGER CREATED");
         maintenance_manager(mqid, edge_server_number);
         exit(0);
     }
+    
+    sigfillset(&block_set); // will have all possible signals blocked when our handler is called
 
+    //define a handler for SIGINT and SIGTSTP; when entered all possible signals are blocked
+    new_action.sa_flags = 0;
+    new_action.sa_mask = block_set;
+    new_action.sa_handler = &termination_handler;
+
+    sigaction(SIGINT,&new_action,NULL);
+    sigaction(SIGTSTP,&new_action,NULL);
+
+	#ifdef DEBUG
+	printf("Waiting for processes to finish...\n");
+	#endif
+    for(i = 0; i < N_PROCESSES; i++) wait(NULL);
+	
     clean_resources();
     exit(0);
 }

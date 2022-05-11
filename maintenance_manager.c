@@ -23,6 +23,8 @@
 pthread_t * mm_thread;
 int mqid, edge_server_number, * id;
 sem_t maintenance_counter;
+sigset_t mm_block_set;
+struct sigaction mm_new_action;
 
 void clean_mm_resources(){
     int i;
@@ -32,11 +34,32 @@ void clean_mm_resources(){
     free(mm_thread);
 }
 
+void mm_termination_handler(int signum) {
+    if(signum == SIGINT){ // handling of CTRL-C
+    	printf("Maintenance manager: sigint\n");
+    	for(int i = 0; i < edge_server_number; i++) pthread_cancel(mm_thread[i]);
+    	clean_mm_resources();
+    	printf("MM DIED\n");
+        exit(0);
+    }
+}
+
+
 void * maintenance(void *t){
     Message msg;
     int interval_of_mm, time_bw_mm;
     int es_id = *((int *) t);
     int mm_msg_type = es_id * 2 + 1, es_msg_type = es_id * 2;
+    
+    sigfillset(&mm_block_set); // will have all possible signals blocked when our handler is called
+
+    //define a handler for SIGINT; when entered all possible signals are blocked
+    mm_new_action.sa_flags = 0;
+    mm_new_action.sa_mask = mm_block_set;
+    mm_new_action.sa_handler = &mm_termination_handler;
+
+    sigaction(SIGINT,&mm_new_action,NULL);
+    
 	srand(time(NULL));
 	
     // Maintenance of the Edge Servers
@@ -69,6 +92,16 @@ void maintenance_manager(int mq_id, int es_num) {
     int i, es_msg_type;
     mqid = mq_id;
     edge_server_number = es_num;
+    
+    sigfillset(&mm_block_set); // will have all possible signals blocked when our handler is called
+
+    //define a handler for SIGINT; when entered all possible signals are blocked
+    mm_new_action.sa_flags = 0;
+    mm_new_action.sa_mask = mm_block_set;
+    mm_new_action.sa_handler = &mm_termination_handler;
+
+    sigaction(SIGINT,&mm_new_action,NULL);
+    
     sem_init(&maintenance_counter, 0, edge_server_number - 1);
     // The Maintenance Manager is informed of the creation of the Edge Servers
     for(i = 0; i < edge_server_number; i++)

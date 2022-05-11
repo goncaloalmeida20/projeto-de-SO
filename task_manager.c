@@ -27,12 +27,15 @@ typedef struct{
 
 int queue_size, task_pipe_fd, scheduler_start = 0;
 Task *queue;
+pid_t *edge_servers_pid;
 pthread_t scheduler_thread;
 pthread_t dispatcher_thread;
 pthread_mutexattr_t mutexattr;
 pthread_condattr_t condattr;
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t scheduler_cond = PTHREAD_COND_INITIALIZER;
+sigset_t tm_block_set;
+struct sigaction tm_new_action;
 
 
 int add_task_to_queue(Task *t){
@@ -365,31 +368,6 @@ void* dispatcher(){
 	pthread_exit(NULL);
 }
 
-void clean_tm_resources(){
-	int i;
-	
-	pthread_join(scheduler_thread, NULL);
-	
-	//wait for edge server processes
-	for(i = 0; i < edge_server_number; i++) wait(NULL);
-	
-	//clean unnamed pipe resources
-	for(i = 0; i < edge_server_number; i++){
-		close(unnamed_pipe[i][1]);
-		free(unnamed_pipe[i]);
-	}
-	free(unnamed_pipe);
-	
-	pthread_mutex_destroy(&queue_mutex);
-	pthread_cond_destroy(&scheduler_cond);
-	pthread_cond_destroy(dispatcher_cond);
-	pthread_mutex_destroy(dispatcher_mutex);
-	pthread_mutexattr_destroy(&mutexattr); 
-	pthread_condattr_destroy(&condattr);
-	free(queue);
-	close(task_pipe_fd);
-}
-
 void read_from_task_pipe(){
 	int read_len;
 	Task t;
@@ -431,71 +409,48 @@ void read_from_task_pipe(){
 		}else{
 			log_write("ERROR READING FROM TASK PIPE");
 		}
-		/*
-		//read the first 4 bytes to check if the message is the command "EXIT"
-		if((read_len = read(task_pipe_fd, msg, 4)) > 0){
-			msg[read_len] = '\0';
-			//check if the message is the command "EXIT"
-			printf("MSG %s %d\n", msg, read_len);
-			printf("%c\n%c\n%c\n%c\n",msg[0],msg[1],msg[2],msg[3]);
-			if(strcmp(msg, "EXIT") == 0){
-				log_write("EXIT");
-				break;
-			}
-			//check if the message is a wrong command
-			if(!('0' < msg[0] && msg[0] < '9') && strcmp(msg, "STAT") != 0){
-				sprintf(msg_temp, "WRONG COMMAND => %s", msg);
-				log_write(msg_temp);
-				continue;
-			}
-			//the message isn't "EXIT", so the next byte is read to check if it is equal to "STATS"
-			if((read_len = read(task_pipe_fd, msg_aux, 1)) > 0){
-				//concatenate the new byte to the original message
-				msg_aux[read_len] = '\0';
-				strcat(msg, msg_aux);
-				printf("MSG AUX1 %s\n", msg_aux);
-				//check if the message is the command "STATS"
-				if(strcmp(msg, "STATS") == 0){
-					log_write("PRINT STATS");
-					print_stats();
-					continue;
-				}
-				
-				//the message isn't "STATS" either, so read the remaining bytes to check if it is a task
-				if((read_len = read(task_pipe_fd, msg_aux, MSG_LEN-5)) > 0){
-					msg_aux[read_len] = '\0';
-					strcat(msg, msg_aux);
-					printf("MSG AUX2 %s\n", msg_aux);
-					//check if the message is a task
-					if(sscanf(msg, "%ld;%d;%lf", &t.id, &t.thousand_inst, &t.max_exec_time) == 3){
-						//new task arrived
-						t.arrival_time = get_current_time();
-						t.priority = 0;
-						
-						//add task to queue and signal scheduler that a new task has arrived
-						pthread_mutex_lock(&queue_mutex);
-						if(add_task_to_queue(&t) == 0){
-							sprintf(msg, "TASK %ld ADDED TO THE QUEUE", t.id);
-							log_write(msg);
-							//signal scheduler that a new task has arrived
-							scheduler_start = 1;
-							pthread_cond_signal(&scheduler_cond);				
-						}
-						pthread_mutex_unlock(&queue_mutex);	
-					}else{ //the message is not a task either, so it is a wrong command
-						sprintf(msg_temp, "WRONG COMMAND => %s", msg);
-						log_write(msg_temp);
-					}
-				}
-			}
-		}else{
-			log_write("ERROR READING FROM TASK PIPE");
-		}*/
 	}
+}
+
+void clean_tm_resources(){
+	int i;
+	pthread_join(scheduler_thread, NULL);
+	pthread_join(dispatcher_thread, NULL);
+	
+	//clean unnamed pipe resources
+	for(i = 0; i < edge_server_number; i++){
+		close(unnamed_pipe[i][1]);
+		free(unnamed_pipe[i]);
+	}
+	free(unnamed_pipe);
+	free(edge_servers_pid);
+	free(queue);
+	pthread_mutex_destroy(&queue_mutex);
+	pthread_cond_destroy(&scheduler_cond);
+	pthread_cond_destroy(dispatcher_cond);
+	pthread_mutex_destroy(dispatcher_mutex);
+	pthread_mutexattr_destroy(&mutexattr); 
+	pthread_condattr_destroy(&condattr);
+	close(task_pipe_fd);
+}
+
+void tm_termination_handler(int signum) {
+    if(signum == SIGINT){ // handling of CTRL-C
+    	printf("TM: sigint\n");
+    	for(int i = 0; i < edge_server_number; i++)
+    		kill(edge_servers_pid[i], SIGINT);
+    	pthread_cancel(scheduler_thread);
+		pthread_cancel(dispatcher_thread);
+        clean_tm_resources();
+        printf("TM DIED\n");
+        exit(0);
+    }
 }
 
 int task_manager(){
 	int i;
+    
+    edge_servers_pid = (pid_t*) malloc(edge_server_number * sizeof(pid_t));
 	
 	//create task queue
 	queue = (Task *)malloc(queue_pos * sizeof(Task));
@@ -529,7 +484,7 @@ int task_manager(){
 	//create edge server processes
 	for(i = 0; i < edge_server_number; i++){
 		//create edge server number i
-		if(fork() == 0){
+		if((edge_servers_pid[i] = fork()) == 0){
 			close(unnamed_pipe[i][1]);
 			edge_server(i+1);
 			close(unnamed_pipe[i][0]);
@@ -555,7 +510,19 @@ int task_manager(){
 		return -1;
 	}
 	
+	sigfillset(&tm_block_set); // will have all possible signals blocked when our handler is called
+
+    //define a handler for SIGINT; when entered all possible signals are blocked
+    tm_new_action.sa_flags = 0;
+    tm_new_action.sa_mask = tm_block_set;
+    tm_new_action.sa_handler = &tm_termination_handler;
+
+    sigaction(SIGINT,&tm_new_action,NULL);
+	
 	read_from_task_pipe();
+	
+	//wait for edge server processes
+	for(i = 0; i < edge_server_number; i++) wait(NULL);
 	
 	clean_tm_resources();
 	return 0;

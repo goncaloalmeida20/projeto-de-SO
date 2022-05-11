@@ -32,6 +32,8 @@ char es_name[NAME_LEN];
 pthread_mutex_t tasks_mutex = PTHREAD_MUTEX_INITIALIZER, maintenance_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t free_cond = PTHREAD_COND_INITIALIZER, tasks_cond = PTHREAD_COND_INITIALIZER;
 pthread_t vcpu_thread[2], maintenance_thread, performance_thread, task_thread;
+sigset_t es_block_set;
+struct sigaction es_new_action;
 
 double get_current_time(){
 	struct timespec ts;
@@ -284,13 +286,36 @@ void clean_es_resources(){
     pthread_join(task_thread, NULL);
 	pthread_join(maintenance_thread, NULL);
     pthread_mutex_destroy(&tasks_mutex);
+    pthread_mutex_destroy(&maintenance_mutex);
     pthread_cond_destroy(&tasks_cond);
     pthread_cond_destroy(&free_cond);
 }
 
+void es_termination_handler(int signum) {
+    if(signum == SIGINT){ // handling of CTRL-C
+    	printf("%s: sigint\n", es_name);
+    	pthread_cancel(performance_thread);
+		for(int i = 0; i < 2; i++) pthread_cancel(vcpu_thread[i]);
+		pthread_cancel(task_thread);
+		pthread_cancel(maintenance_thread);
+        clean_es_resources();
+        exit(0);
+    }
+}
+
+
 int edge_server(int es_n){
 	char msg[MSG_LEN];
 	edge_server_n = es_n;
+	
+	sigfillset(&es_block_set); // will have all possible signals blocked when our handler is called
+
+    //define a handler for SIGINT; when entered all possible signals are blocked
+    es_new_action.sa_flags = 0;
+    es_new_action.sa_mask = es_block_set;
+    es_new_action.sa_handler = &es_termination_handler;
+
+    sigaction(SIGINT,&es_new_action,NULL);
 	
 	shm_lock();
 	EdgeServer this = get_edge_server(edge_server_n);
