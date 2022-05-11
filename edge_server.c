@@ -239,6 +239,7 @@ int maintenance_ongoing(){
 
 void * check_performance(void * t){
     int performance_change_flag;
+    char msg[MSG_LEN];
     while(1){    
     	pthread_mutex_lock(performance_changed_mutex);
     	//if(maintenance_start) old_performance_change_flag = 0;
@@ -256,6 +257,9 @@ void * check_performance(void * t){
         this.performance_level = performance_change_flag;
         set_edge_server(&this, edge_server_n);
         shm_unlock();
+        
+        sprintf(msg, "%d: CHANGED PERFORMANCE TO %d", es_name, performance_change_flag); 
+        log_write(msg);
                 
         pthread_mutex_lock(&tasks_mutex);
         pthread_cond_broadcast(&free_cond);

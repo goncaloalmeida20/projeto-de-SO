@@ -16,11 +16,16 @@ int change_performance(){
 	shm_lock();
     tm_percentage = get_tm_percentage();
     min_wait_time = get_min_wait_time();
-    shm_unlock();
-    if(tm_percentage > 80 && min_wait_time > max_wait)
+    
+    if(tm_percentage > 80 && min_wait_time > max_wait){
+    	shm_unlock();
     	return 2;
-    if(tm_percentage < 20)
+    }
+    if(tm_percentage < 20){
+    	shm_unlock();
     	return 1;
+    }
+    shm_unlock();
     return 0;
 
 }

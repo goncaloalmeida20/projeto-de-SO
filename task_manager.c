@@ -93,7 +93,6 @@ void reevaluate_priorities(double current_time){
 	}
 }
 
-
 void check_expired(double current_time){
 	int i;
 	char msg[MSG_LEN];
@@ -249,8 +248,9 @@ void* dispatcher(){
 	
 	while(1){
 		min_priority = 0;
-		pthread_mutex_lock(&queue_mutex);
 		pthread_mutex_lock(dispatcher_mutex);
+		pthread_mutex_lock(&queue_mutex);
+		
 		//Check if there are tasks in the task queue and free vcpus
 		//If not, wait
 		while(queue_size == 0 || !check_free_edge_servers()){
@@ -283,8 +283,8 @@ void* dispatcher(){
 		}
 		if(!es || free_vcpu == -1){
 			printf("dsp No task selected\n");
-			pthread_mutex_unlock(dispatcher_mutex);	
 			pthread_mutex_unlock(&queue_mutex);
+			pthread_mutex_unlock(dispatcher_mutex);	
 			continue;
 		}
 
