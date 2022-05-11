@@ -147,7 +147,7 @@ float get_avg_res_time(){
 
 void set_avg_res_time(float t){
     //store the average time of response by a task
-    //which is a float stored in the shared memory
+    // which is a float stored in the shared memory
     shared_var->avg_res_time = t;
 }
 
