@@ -20,19 +20,8 @@
 
 #define SHM_MUTEX "SHM_MUTEX"
 
-typedef struct {
-    // Flag for the monitor to change / Performance mode of the edge servers / Percentage of tasks within the task manager
-    // Minimum wait time for a new task be executed / Total number of not executed tasks
-    int performance_change_flag, tm_percentage, min_wait_time, n_not_executed_tasks;
-    // Average time of response by a task
-    float avg_res_time;
-    pthread_mutex_t dispatcher_mutex, monitor_mutex, performance_changed_mutex;
-    pthread_cond_t dispatcher_cond, monitor_cond, performance_changed_cond;
-} sh_mem;
-
 sem_t* shm_mutex;
-sh_mem *shared_var;
-int shmid;
+int *shared_var, shmid;
 
 int create_shm_mutex(){
 	sem_unlink(SHM_MUTEX);
@@ -44,13 +33,17 @@ int create_shm_mutex(){
 
 int create_shm(){
 	// Create shared memory
-    if((shmid = shmget(IPC_PRIVATE, sizeof(sh_mem) + edge_server_number*sizeof(EdgeServer), IPC_CREAT | 0700)) < 0){
+	// The shared memory will include five integers (a flag for the monitor to change
+	// the performance mode of the edge servers, the percentage of tasks within the task manager,
+    // the minimum wait time for a new task be executed, the total number of executed and not executed tasks)
+    // the average time of response by a task and edge_server_number edge servers
+    if((shmid = shmget(IPC_PRIVATE, sizeof(int) * 4 + sizeof(float) + edge_server_number*sizeof(EdgeServer) + sizeof(pthread_mutex_t) * 3 + sizeof(pthread_cond_t) * 3, IPC_CREAT | 0700)) < 0){
 		log_write("ERROR CREATING SHARED MEMORY");
 		return -1;
 	}	
 	
 	//attach shared memory
-	if((shared_var = (sh_mem *) shmat(shmid, NULL, 0)) == (sh_mem*)- 1){
+	if((shared_var = (int*)shmat(shmid, NULL, 0)) == (int*)-1){
 		log_write("ERROR ATTACHING SHARED MEMORY");
 		return -1;
 	}
@@ -78,13 +71,13 @@ void shm_unlock(){
 
 EdgeServer get_edge_server(int n){
 	//return the edge server number n in the shared memory
-	return *((EdgeServer*)(shared_var + 1) + n - 1);
+	return *(((EdgeServer*)(((float*)(shared_var + 4))+1)) + n - 1);
 }
 
 
 void set_edge_server(EdgeServer* es, int n){
 	//get a pointer to the edge server number n in the shared memory
-	EdgeServer* edge_server_n = ((EdgeServer*)(shared_var + 1) + n - 1);
+	EdgeServer* edge_server_n = ((EdgeServer*)(((float*)(shared_var + 4))+1)) + n - 1;
 	
 	//store the changes made to the edge server
 	*edge_server_n = *es;
@@ -93,87 +86,88 @@ void set_edge_server(EdgeServer* es, int n){
 int get_performance_change_flag(){
 	//return the performance change flag which is the 
 	//first integer stored in the shared memory
-	return shared_var->performance_change_flag;
+	return *shared_var;
 }
 
 void set_performance_change_flag(int pcf){
 	//store the new performance change flag which is the 
 	//first integer stored in the shared memory
-	shared_var->performance_change_flag = pcf;
+	*shared_var = pcf;
 }
 
 int get_tm_percentage(){
     //return the percentage of tasks within the task manager
     //which is the second integer stored in the shared memory
-    return shared_var->tm_percentage;
+    return *(shared_var + 1);
 }
 
 void set_tm_percentage(int p){
     //store the new percentage of tasks within the task manager
     //which is the second integer stored in the shared memory
-    shared_var->tm_percentage = p;
+    *(shared_var + 1) = p;
 }
 
 
 int get_min_wait_time(){
     //return the minimum wait time for a new task be executed
     //which is the third integer stored in the shared memory
-    return shared_var->min_wait_time;
+    return *(shared_var + 2);
 }
 
 void set_min_wait_time(int t){
     //store the minimum wait time for a new task be executed
     //which is the third integer stored in the shared memory
-    shared_var->min_wait_time = t;
+    *(shared_var + 2) = t;
 }
 
 int get_n_not_executed_tasks(){
     //return the total number of not executed tasks
     //which is the fifth integer stored in the shared memory
-    return shared_var->n_not_executed_tasks;
+    return *(shared_var + 3);
 }
 
 void set_n_not_executed_tasks(int n){
     //store the total number of not executed tasks
     //which is the fifth integer stored in the shared memory
-    shared_var->n_not_executed_tasks = n;
+    *(shared_var + 3) = n;
 }
 
 float get_avg_res_time(){
     //return the average time of response by a task
     //which is a float stored in the shared memory
-    return shared_var->avg_res_time;
+    return *((float*)(shared_var + 4));
 }
 
 void set_avg_res_time(float t){
     //store the average time of response by a task
     //which is a float stored in the shared memory
-    shared_var->avg_res_time = t;
+    float* avg_res_time = ((float*)(shared_var + 4));
+    *avg_res_time = t;
 }
 
 
 pthread_mutex_t* get_dispatcher_mutex(){
-	return &shared_var->dispatcher_mutex;
+	return (pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number);
 }
 
 pthread_cond_t* get_dispatcher_cond(){
-	return &shared_var->dispatcher_cond;
+	return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number)+3);
 }
 
 pthread_mutex_t* get_monitor_mutex(){
-    return &shared_var->monitor_mutex;
+    return (pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number) + 1;
 }
 
 pthread_cond_t* get_monitor_cond(){
-    return &shared_var->monitor_cond;
+    return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number)+3) + 1;
 }
 
 pthread_mutex_t* get_performance_changed_mutex(){
-    return &shared_var->performance_changed_mutex;
+    return (pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number) + 2;
 }
 
 pthread_cond_t* get_performance_changed_cond(){
-    return &shared_var->performance_changed_cond;
+    return (pthread_cond_t*)((pthread_mutex_t*)(((EdgeServer*)(((float*)(shared_var + 4))+1)) + edge_server_number)+3) + 2;
 }
 
 int get_n_executed_tasks(){
