@@ -44,7 +44,7 @@ int create_shm_mutex(){
 
 int create_shm(){
 	// Create shared memory
-    if((shmid = shmget(IPC_PRIVATE, sizeof(sh_mem) + edge_server_number*sizeof(EdgeServer), IPC_CREAT | 0700)) < 0){
+    if((shmid = shmget(IPC_PRIVATE, sizeof(sh_mem) + edge_server_number*sizeof(EdgeServer), IPC_CREAT | 0666)) < 0){
 		log_write("ERROR CREATING SHARED MEMORY");
 		return -1;
 	}	
@@ -114,7 +114,6 @@ void set_tm_percentage(int p){
     shared_var->tm_percentage = p;
 }
 
-
 int get_min_wait_time(){
     //return the minimum wait time for a new task be executed
     //which is the third integer stored in the shared memory
@@ -150,7 +149,6 @@ void set_avg_res_time(float t){
     // which is a float stored in the shared memory
     shared_var->avg_res_time = t;
 }
-
 
 pthread_mutex_t* get_dispatcher_mutex(){
 	return &shared_var->dispatcher_mutex;
@@ -214,6 +212,6 @@ void close_shm_mutex(){
 //clean up resources used
 void close_shm(){
 	close_shm_mutex();
-	shmdt(shared_var);
 	shmctl(shmid, IPC_RMID, NULL);
+	shmdt(shared_var);
 }

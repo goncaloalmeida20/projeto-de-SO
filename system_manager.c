@@ -34,7 +34,6 @@ pthread_mutexattr_t monitor_attrmutex;
 pthread_condattr_t monitor_attrcondv;
 pthread_mutexattr_t perf_ch_attrmutex;
 pthread_condattr_t perf_ch_attrcondv;
-sigset_t block_set;
 struct sigaction new_action;
 
 int read_file(FILE *fp){
@@ -86,39 +85,50 @@ int read_file(FILE *fp){
 
 void clean_resources(){
 	printf("SM CR\n");
-    msgctl(mqid, IPC_RMID, 0);
     unlink(PIPE_NAME);
-    printf("2\n");
     pthread_cond_broadcast(monitor_cond);
-    printf("%d\n", monitor_cond->__data.__wrefs);
-    monitor_cond->__data.__wrefs = 0;
-    performance_changed_cond->__data.__wrefs = 0;
+    pthread_cond_broadcast(performance_changed_cond);
     pthread_cond_destroy(monitor_cond);
-    printf("3\n");
+    pthread_cond_destroy(performance_changed_cond);
     pthread_condattr_destroy(&monitor_attrcondv);
     pthread_mutex_destroy(monitor_mutex);
     pthread_mutexattr_destroy(&monitor_attrmutex);
-    pthread_cond_destroy(performance_changed_cond);
     pthread_condattr_destroy(&perf_ch_attrcondv);
     pthread_mutex_destroy(performance_changed_mutex);
     pthread_mutexattr_destroy(&perf_ch_attrmutex);
+    msgctl(mqid, IPC_RMID, 0);
     close_shm();
     log_write("SIMULATOR CLOSING");
     close_log();
 }
 
-void termination_handler(int signum) {
+void wait_processes(){
+	int i;
+	#ifdef DEBUG
+	printf("Waiting for processes to finish...\n");
+	#endif
+    for(i = 0; i < N_PROCESSES; i++){
+     	printf("WAIT %d\n", i);
+     	wait(NULL);
+	}
+	clean_resources();
+}
+
+void signal_handler(int signum) {
     if(signum == SIGINT){ // handling of CTRL-C
     	log_write("SIGNAL SIGINT RECEIVED");
-    	kill(task_manager_pid, SIGINT);
-    	kill(monitor_pid, SIGINT);
-    	kill(maintenance_manager_pid, SIGINT);
-        clean_resources();
+    	kill(task_manager_pid, SIGUSR1);
+    	kill(monitor_pid, SIGUSR1);
+    	kill(maintenance_manager_pid, SIGUSR1);
+        wait_processes();
         exit(0);
     }
     else if(signum == SIGTSTP){ // handling of CTRL-Z
+    	sigprocmask(SIG_BLOCK, &block_set, NULL);
     	log_write("SIGNAL SIGTSTP RECEIVED");
         print_stats();
+        sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+        //wait_processes();
     }
 }
 
@@ -129,6 +139,10 @@ int main(int argc, char *argv[]){
         printf("WRONG NUMBER OF PARAMETERS\n");
         exit(1);
     }
+    
+    sigfillset(&block_set); // will have all possible signals blocked when our handler is called
+    sigprocmask(SIG_BLOCK, &block_set, NULL);
+
     
     #ifdef DEBUG
 	printf("Creating log...\n");
@@ -240,21 +254,24 @@ int main(int argc, char *argv[]){
         exit(0);
     }
     
-    sigfillset(&block_set); // will have all possible signals blocked when our handler is called
+    
 
-    //define a handler for SIGINT and SIGTSTP; when entered all possible signals are blocked
-    new_action.sa_flags = 0;
+    //define a handler for SIGINT and SIGTSTP
+    new_action.sa_flags = SA_RESTART;
     new_action.sa_mask = block_set;
-    new_action.sa_handler = &termination_handler;
+    new_action.sa_handler = &signal_handler;
 
     sigaction(SIGINT,&new_action,NULL);
+    
+    //new set with all signals except SIGINT and SIGTSTP
+    sigset_t no_sigint_sigtstp_set = block_set; 
+    sigdelset(&no_sigint_sigtstp_set, SIGTSTP);
+    sigdelset(&no_sigint_sigtstp_set, SIGINT);
+    new_action.sa_mask = no_sigint_sigtstp_set;
     sigaction(SIGTSTP,&new_action,NULL);
-
-	#ifdef DEBUG
-	printf("Waiting for processes to finish...\n");
-	#endif
-    for(i = 0; i < N_PROCESSES; i++) wait(NULL);
 	
-    clean_resources();
+	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+	
+    wait_processes();
     exit(0);
 }

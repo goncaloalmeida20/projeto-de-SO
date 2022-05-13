@@ -25,16 +25,15 @@ typedef struct{
     int priority;
 }Task;
 
-int queue_size, task_pipe_fd, scheduler_start = 0;
+int queue_size, task_pipe_fd, scheduler_start = 0, tm_leave_flag = 0, rt_reading;
 Task *queue;
 pid_t *edge_servers_pid;
-pthread_t scheduler_thread;
-pthread_t dispatcher_thread;
+pthread_t scheduler_thread, dispatcher_thread, read_thread;
 pthread_mutexattr_t mutexattr;
 pthread_condattr_t condattr;
-pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER, end_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t scheduler_cond = PTHREAD_COND_INITIALIZER;
-sigset_t tm_block_set;
+//sigset_t tm_block_set;
 struct sigaction tm_new_action;
 
 
@@ -138,10 +137,22 @@ void check_expired(double current_time){
 
 void* scheduler(){
 	double current_time;
+	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
 	while(1){
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+	
 		pthread_mutex_lock(&queue_mutex);
 		//wait for new task to arrive
 		while(!scheduler_start){
+			//check if the simulator is going to end
+			if(tm_leave_flag == 1){
+				pthread_mutex_unlock(&queue_mutex);
+				#ifdef DEBUG_TM
+				printf("Scheduler leaving...\n");
+				#endif
+				pthread_exit(NULL);
+			}
+		
 			#ifdef DEBUG_TM
 			printf("Scheduler waiting for signal\n");
 			#endif
@@ -178,6 +189,8 @@ void* scheduler(){
 		pthread_mutex_lock(dispatcher_mutex);
 		pthread_cond_signal(dispatcher_cond);
 		pthread_mutex_unlock(dispatcher_mutex);
+		
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	}
 	pthread_exit(NULL);
 }
@@ -268,19 +281,33 @@ void* dispatcher(){
 	char msg[MSG_LEN], * es_name;
 	VCPUTask t;
 	double task_arrival_time, task_wait_time;
+	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
 	
 	while(1){
 		min_priority = 0;
+		
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+		
 		pthread_mutex_lock(dispatcher_mutex);
 		pthread_mutex_lock(&queue_mutex);
 		
 		//Check if there are tasks in the task queue and free vcpus
 		//If not, wait
 		while(queue_size == 0 || !check_free_edge_servers()){
+			//check if the simulator is going to end
+			if(tm_leave_flag == 1){
+				pthread_mutex_unlock(&queue_mutex);
+				pthread_mutex_unlock(dispatcher_mutex);
+				#ifdef DEBUG_TM
+				printf("Dispatcher leaving...\n");
+				#endif
+				pthread_exit(NULL);
+			}
+			
+			pthread_mutex_unlock(&queue_mutex);
 			#ifdef DEBUG_TM
 			printf("Dispatcher waiting for signal\n");
 			#endif
-			pthread_mutex_unlock(&queue_mutex);
 			pthread_cond_wait(dispatcher_cond, dispatcher_mutex);
 			pthread_mutex_lock(&queue_mutex);
 			#ifdef DEBUG_TM
@@ -349,6 +376,7 @@ void* dispatcher(){
 		set_avg_res_time((get_avg_res_time()*total_tasks + task_wait_time)/ (total_tasks+1));
 		shm_unlock();
 		
+		//notify monitor that changes were made
 		pthread_mutex_lock(monitor_mutex);
 		pthread_cond_signal(monitor_cond);
 		pthread_mutex_unlock(monitor_mutex);
@@ -364,17 +392,24 @@ void* dispatcher(){
 		}
 		
 		pthread_mutex_unlock(dispatcher_mutex);	
+		
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	}
 	pthread_exit(NULL);
 }
 
-void read_from_task_pipe(){
+void *read_from_task_pipe(){
 	int read_len;
 	Task t;
 	char msg[MSG_LEN], msg_temp[MSG_LEN*2];
+	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
 	while(1){
 		//read message from the named pipe
+		printf("reading\n");
+		rt_reading = 1;
 		if((read_len = read(task_pipe_fd, msg, MSG_LEN)) > 0){
+			rt_reading = 0;
+			pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 			msg[read_len] = '\0';
 			#ifdef DEBUG_TM
 			printf("%s read from task pipe\n", msg);
@@ -405,18 +440,16 @@ void read_from_task_pipe(){
 				sprintf(msg_temp, "WRONG COMMAND => %s", msg);
 				log_write(msg_temp);
 			}
-			
+			pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 		}else{
 			log_write("ERROR READING FROM TASK PIPE");
 		}
 	}
+	pthread_exit(NULL);
 }
 
 void clean_tm_resources(){
 	int i;
-	pthread_join(scheduler_thread, NULL);
-	pthread_join(dispatcher_thread, NULL);
-	
 	//clean unnamed pipe resources
 	for(i = 0; i < edge_server_number; i++){
 		close(unnamed_pipe[i][1]);
@@ -435,16 +468,48 @@ void clean_tm_resources(){
 }
 
 void tm_termination_handler(int signum) {
-    if(signum == SIGINT){ // handling of CTRL-C
-    	printf("TM: sigint\n");
-    	for(int i = 0; i < edge_server_number; i++)
-    		kill(edge_servers_pid[i], SIGINT);
+    if(signum == SIGUSR1){
+    	int i;
+    	char msg[MSG_LEN];
+    	
+    	log_write("WAITING FOR THE LAST TASKS TO FINISH\n");
+    	
+    	printf("TM: sigusr1\n");
+    	
+    	//the simulator is going to end
+    	
+    	tm_leave_flag = 1;
+    	pthread_cancel(read_thread);
+    	pthread_join(read_thread, NULL);
+    	
+    	//notify scheduler and dispatcher if they are waiting
+    	pthread_mutex_lock(&queue_mutex);
+    	pthread_cond_broadcast(&scheduler_cond);
+    	pthread_mutex_unlock(&queue_mutex);
+    	
+    	pthread_mutex_lock(dispatcher_mutex);
+    	pthread_cond_broadcast(dispatcher_cond);
+    	pthread_mutex_unlock(dispatcher_mutex);
+    	
     	pthread_cancel(scheduler_thread);
 		pthread_cancel(dispatcher_thread);
+    	pthread_join(scheduler_thread, NULL);
+		pthread_join(dispatcher_thread, NULL);
+    	
+    	for(i = 0; i < edge_server_number; i++){
+    		printf("TM killing %d\n", i+1);
+    		kill(edge_servers_pid[i], SIGUSR1);
+    		wait(NULL);
+    	}
+    	for(i = 0; i < queue_size; i++){
+    		sprintf(msg, "TASK %ld NOT EXECUTED (SIMULATOR CLOSING)", queue[i].id);
+    		log_write(msg);
+    	}
+    	print_stats();
         clean_tm_resources();
         printf("TM DIED\n");
         exit(0);
-    }
+    }printf("TM unexpected signal %d\n", signum);
 }
 
 int task_manager(){
@@ -498,11 +563,6 @@ int task_manager(){
 	#ifdef DEBUG_TM
 	printf("Creating scheduler and dispatcher thread...\n");
 	#endif
-	//create scheduler thread
-	pthread_create(&scheduler_thread, NULL, scheduler, NULL);
-	//create dispatcher thread
-	pthread_create(&dispatcher_thread, NULL, dispatcher, NULL);
-	
 	//opens the pipe in read-write mode for the function read
 	//to block while waiting for new tasks to arrive
 	if ((task_pipe_fd = open(PIPE_NAME, O_RDWR)) < 0) {
@@ -510,19 +570,33 @@ int task_manager(){
 		return -1;
 	}
 	
-	sigfillset(&tm_block_set); // will have all possible signals blocked when our handler is called
-
-    //define a handler for SIGINT; when entered all possible signals are blocked
+	//define a handler for SIGINT; when entered all possible signals are blocked
     tm_new_action.sa_flags = 0;
-    tm_new_action.sa_mask = tm_block_set;
+    tm_new_action.sa_mask = block_set;
     tm_new_action.sa_handler = &tm_termination_handler;
 
-    sigaction(SIGINT,&tm_new_action,NULL);
+    sigaction(SIGUSR1,&tm_new_action,NULL);
+    
+    tm_new_action.sa_handler = SIG_IGN;
+    
+    sigaction(SIGINT, &tm_new_action, NULL);
+    sigaction(SIGTSTP, &tm_new_action, NULL);
 	
-	read_from_task_pipe();
+	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
 	
-	//wait for edge server processes
-	for(i = 0; i < edge_server_number; i++) wait(NULL);
+	//create scheduler thread
+	pthread_create(&scheduler_thread, NULL, scheduler, NULL);
+	//create dispatcher thread
+	pthread_create(&dispatcher_thread, NULL, dispatcher, NULL);
+	//create the thread that will read from the task pipe
+	pthread_create(&read_thread, NULL, read_from_task_pipe, NULL);
+
+    
+    
+	
+	pthread_join(read_thread, NULL);
+	pthread_join(scheduler_thread, NULL);
+	pthread_join(dispatcher_thread, NULL);
 	
 	clean_tm_resources();
 	return 0;

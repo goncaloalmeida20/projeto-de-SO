@@ -13,7 +13,10 @@
 #include "log.h"
 #include "shared_memory.h"
 
-sigset_t mon_block_set;
+//sigset_t mon_block_set;
+int ch_perf, old_perf, mon_leave_flag = 0;
+char msg[MSG_LEN];
+pthread_t mon_thread;
 struct sigaction mon_new_action;
 
 int change_performance(){
@@ -35,34 +38,20 @@ int change_performance(){
 
 }
 
-void mon_termination_handler(int signum) {
-    if(signum == SIGINT){ // handling of CTRL-C
-    	printf("Monitor: sigint\n");
-        exit(0);
-    }
-}
-
-void monitor(){
-	int ch_perf, old_perf = 1;
-	char msg[MSG_LEN];
-	
-	sigfillset(&mon_block_set); // will have all possible signals blocked when our handler is called
-
-    //define a handler for SIGINT; when entered all possible signals are blocked
-    mon_new_action.sa_flags = 0;
-    mon_new_action.sa_mask = mon_block_set;
-    mon_new_action.sa_handler = &mon_termination_handler;
-
-    sigaction(SIGINT,&mon_new_action,NULL);
-	
-	shm_lock();
-	set_performance_change_flag(1);
-	shm_unlock();
-    while(1){
+void *monitor_thread(){
+	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
+	while(1){
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
     	pthread_mutex_lock(monitor_mutex);
-    	while(!(ch_perf = change_performance()) || ch_perf == old_perf){
+    	while(!(ch_perf = change_performance()) || ch_perf == old_perf || mon_leave_flag){
+    		if(mon_leave_flag){
+    			pthread_mutex_unlock(monitor_mutex);
+    			#ifdef DEBUG_MON
+    			printf("Monitor leaving...\n");
+    			#endif
+    			pthread_exit(NULL);
+    		}
         	pthread_cond_wait(monitor_cond, monitor_mutex);
-        	printf("JAISDJAIODJA\n");
         }
         pthread_mutex_unlock(monitor_mutex);
         
@@ -77,6 +66,53 @@ void monitor(){
         pthread_mutex_unlock(performance_changed_mutex);
         
         old_perf = ch_perf;
-        sleep(1);
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     }
+	
+	pthread_exit(NULL);
+}
+
+void mon_termination_handler(int signum) {
+    if(signum == SIGUSR1){ // handling of SIGUSR1
+    	#ifdef DEBUG_MON
+    	printf("Monitor: sigusr1\n");
+    	#endif
+    	//notify the monitor thread if it is waiting
+    	mon_leave_flag = 1;
+    	pthread_mutex_lock(monitor_mutex);
+    	pthread_cond_broadcast(monitor_cond);
+    	pthread_mutex_unlock(monitor_mutex);
+    	pthread_cancel(mon_thread);
+    	pthread_join(mon_thread, NULL);
+        exit(0);
+    }printf("MON unexpected signal %d\n", signum);
+}
+
+void monitor(){
+	//sigfillset(&mon_block_set); // will have all possible signals blocked when our handler is called
+
+    //define a handler for SIGINT; when entered all possible signals are blocked
+    mon_new_action.sa_flags = 0;
+    mon_new_action.sa_mask = block_set;
+    mon_new_action.sa_handler = &mon_termination_handler;
+
+    sigaction(SIGUSR1,&mon_new_action,NULL);
+    
+    mon_new_action.sa_handler = SIG_IGN;
+    
+    sigaction(SIGINT, &mon_new_action, NULL);
+    sigaction(SIGTSTP, &mon_new_action, NULL);
+	
+	shm_lock();
+	set_performance_change_flag(1);
+	shm_unlock();
+	
+	old_perf = 1;
+	
+	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+		
+	pthread_create(&mon_thread, NULL, monitor_thread, NULL);
+
+	printf("MON ola\n");
+	pthread_join(mon_thread, NULL);
 }

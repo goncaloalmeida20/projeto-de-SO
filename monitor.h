@@ -7,6 +7,8 @@
 #ifndef MONITOR_H
 #define MONITOR_H
 
+#define DEBUG_MON //uncomment this line to print monitor debug messages
+
 void monitor();
 
 #endif

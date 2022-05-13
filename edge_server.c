@@ -24,7 +24,7 @@
 #include "maintenance_manager.h"
 
 
-int edge_server_n, wait_for_all_tasks_done = 0, vcpu_start[2];
+int edge_server_n, vcpu_start[2], es_leave_flag = 0;
 int vcpu_capacity[2], maintenance_start = 0, ids[2];
 Message mm_msg;
 VCPUTask current_task;
@@ -48,11 +48,25 @@ double task_time_sec(int capacity, int thousand_inst){
 void *vcpu(void *vcpu_id){
 	int id = *((int*)vcpu_id);
 	VCPUTask t;
+	
+	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
+	
 	while(1){
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+		
 		//Wait for task to arrive
 		pthread_mutex_lock(&tasks_mutex);
-		while(!vcpu_start[id])
+		while(!vcpu_start[id]){
+			//check if the simulator is going to end
+			if(es_leave_flag == 1){
+				pthread_mutex_unlock(&tasks_mutex);
+				#ifdef DEBUG_ES
+				printf("%s: VCPU %d leaving...\n", es_name, id);
+				#endif
+				pthread_exit(NULL);
+			}
 			pthread_cond_wait(&tasks_cond, &tasks_mutex);
+		}
 		t = current_task;
 		pthread_mutex_unlock(&tasks_mutex);
 		
@@ -73,11 +87,12 @@ void *vcpu(void *vcpu_id){
 		this.n_tasks_done++;
 		set_edge_server(&this, edge_server_n);
 		shm_unlock();
-		
 		pthread_mutex_lock(&tasks_mutex);
 		vcpu_start[id] = 0;
 		pthread_cond_broadcast(&free_cond);
 		pthread_mutex_unlock(&tasks_mutex);
+		
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     }
     pthread_exit(NULL);
 }
@@ -95,6 +110,10 @@ void *receive_tasks(){
 	VCPUTask t;
 	EdgeServer this;
 	int first = 1;
+	
+	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
+	
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	shm_lock();
 	this = get_edge_server(edge_server_n);
 	for(int i = 0; i < 2; i++){ 
@@ -103,10 +122,22 @@ void *receive_tasks(){
 	}
 	set_edge_server(&this, edge_server_n);
 	shm_unlock();
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	
 	while(1){
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 		pthread_mutex_lock(&tasks_mutex);
-		while(!ready_to_receive_task())
+		while(!ready_to_receive_task()){
+			//check if the simulator is going to end
+			if(es_leave_flag == 1){
+				pthread_mutex_unlock(&tasks_mutex);
+				#ifdef DEBUG_ES
+				printf("%s: receive tasks leaving...\n", es_name);
+				#endif
+				pthread_exit(NULL);
+			}
 			pthread_cond_wait(&free_cond, &tasks_mutex);
+		}
 		pthread_mutex_unlock(&tasks_mutex);
 
 		if(first) first = 0;
@@ -119,12 +150,15 @@ void *receive_tasks(){
 		printf("%s: Waiting for task in unnamed_pipe %d\n", es_name, edge_server_n-1);
 		#endif
 		
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+
 		read(unnamed_pipe[edge_server_n-1][0], &t, sizeof(VCPUTask));
+		
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 		
 		#ifdef DEBUG_ES
 		printf("%s: Received task %d from unnamed_pipe %d\n", es_name, t.id, edge_server_n-1);
 		#endif
-
 		pthread_mutex_lock(&tasks_mutex);
 		current_task = t;
 		double ct = get_current_time();
@@ -147,6 +181,8 @@ void *receive_tasks(){
 		pthread_cond_signal(dispatcher_cond);
 		pthread_mutex_unlock(dispatcher_mutex);
 		
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+		
 	}
 	pthread_exit(NULL);
 }
@@ -162,13 +198,15 @@ void * enter_maintenance(void * t){
     Message msg;
     char log[MSG_LEN];
     int pl, mm_msg_type = edge_server_n * 2 + 1, es_msg_type = edge_server_n * 2;
-	
+	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
     while(1){
     	//printf("%s: waiting for maintenance\n", es_name);
         msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), mm_msg_type, 0);
         //printf("%s: rcv %s\n", es_name, msg.msg_text);
         if(strcmp(msg.msg_text, "START") == 0){
-        	//printf("%s: Received start\n", es_name);
+        	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+        	printf("%s: Received start\n", es_name);
+        	
 			pthread_mutex_lock(&maintenance_mutex);
 			maintenance_start = 1;
 			pthread_mutex_unlock(&maintenance_mutex);
@@ -181,13 +219,17 @@ void * enter_maintenance(void * t){
         	
         	sprintf(log, "%s: CHANGED PERFORMANCE TO 0 (MAINTENANCE WILL START)", es_name); 
         	log_write(log);
-        	
         	pthread_mutex_lock(&tasks_mutex);
         	// Wait until vcpus finish all tasks
         	while(!vcpus_finished_tasks()){
-        		//printf("%s: vft 1\n", es_name);
+        		//check if the simulator is going to end
+				if(es_leave_flag == 1){
+					pthread_mutex_unlock(&tasks_mutex);
+					sprintf(log, "%s: MAINTENANCE ABORTED (SIMULATOR CLOSING)", es_name); 
+        			log_write(log);
+					pthread_exit(NULL);
+				}
         		pthread_cond_wait(&free_cond, &tasks_mutex);
-        		//printf("%s: vft 2\n", es_name);
         	}
         	pthread_mutex_unlock(&tasks_mutex);
 			
@@ -198,7 +240,7 @@ void * enter_maintenance(void * t){
         	sprintf(log, "%s: STARTING MAINTENANCE", es_name);
         	log_write(log);
         	//printf("%s: pl %d\n", es_name, get_edge_server(edge_server_n).performance_level);
-		}else if(strcmp(msg.msg_text, "END") == 0){
+        }else if(strcmp(msg.msg_text, "END") == 0){
         	//end maintenance, reactivating the vcpus and restoring the performance level
         	//printf("%s: Received end\n", es_name);
         	pthread_mutex_lock(&maintenance_mutex);
@@ -212,7 +254,7 @@ void * enter_maintenance(void * t){
         	this.n_maintenances++;
         	set_edge_server(&this, edge_server_n);
         	shm_unlock();
-                
+            
         	pthread_mutex_lock(&tasks_mutex);
         	pthread_cond_signal(&free_cond);
         	pthread_mutex_unlock(&tasks_mutex);
@@ -227,8 +269,9 @@ void * enter_maintenance(void * t){
         	sprintf(log, "%s: CHANGED PERFORMANCE BACK TO %d", es_name, pl); 
         	log_write(log);
         	
-        	
-        }else log_write("INVALID MESSAGE RECEIVED FROM MAINTENANCE MANAGER");
+        	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        }else printf("INVALID MESSAGE RECEIVED FROM MAINTENANCE MANAGER |%s|\n", msg.msg_text);
+        
     }
 
     pthread_exit(NULL);
@@ -253,12 +296,24 @@ int maintenance_ongoing(){
 void * check_performance(void * t){
     int performance_change_flag;
     char msg[MSG_LEN];
-    while(1){    
+    pthread_sigmask(SIG_BLOCK, &block_set, NULL);
+    while(1){
+    	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+    	
     	pthread_mutex_lock(performance_changed_mutex);
     	while(maintenance_ongoing() || !performance_changed()){
-    		//printf("%s: CH PERF WAIT\n", es_name);
+    		//check if the simulator is going to end
+    		pthread_mutex_lock(&tasks_mutex);
+			if(es_leave_flag == 1){
+				pthread_mutex_unlock(&tasks_mutex);
+				pthread_mutex_unlock(performance_changed_mutex);
+				#ifdef DEBUG_ES
+				printf("%s: check performance leaving...\n", es_name);
+				#endif
+				pthread_exit(NULL);
+			}
+			pthread_mutex_unlock(&tasks_mutex);
     		pthread_cond_wait(performance_changed_cond, performance_changed_mutex);
-    		//printf("%s: CH PERF RCV\n", es_name);
     	}
     	pthread_mutex_unlock(performance_changed_mutex);
     	
@@ -276,15 +331,14 @@ void * check_performance(void * t){
         pthread_mutex_lock(&tasks_mutex);
         pthread_cond_broadcast(&free_cond);
         pthread_mutex_unlock(&tasks_mutex);
+        
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     }
     pthread_exit(NULL);
 }
 
 void clean_es_resources(){
-    pthread_join(performance_thread, NULL);
-    for(int i = 0; i < 2; i++) pthread_join(vcpu_thread[i], NULL);
-    pthread_join(task_thread, NULL);
-	pthread_join(maintenance_thread, NULL);
+    
     pthread_mutex_destroy(&tasks_mutex);
     pthread_mutex_destroy(&maintenance_mutex);
     pthread_cond_destroy(&tasks_cond);
@@ -292,15 +346,40 @@ void clean_es_resources(){
 }
 
 void es_termination_handler(int signum) {
-    if(signum == SIGINT){ // handling of CTRL-C
-    	printf("%s: sigint\n", es_name);
-    	pthread_cancel(performance_thread);
-		for(int i = 0; i < 2; i++) pthread_cancel(vcpu_thread[i]);
-		pthread_cancel(task_thread);
+    if(signum == SIGUSR1){ // handling of SIGUSR1
+    	#ifdef DEBUG_ES
+    	printf("%s: sigusr1\n", es_name);
+    	#endif
+    	
+    	
+    	//notify possible waiting threads
+    	es_leave_flag = 1;
+    	pthread_mutex_lock(&tasks_mutex);
+    	pthread_cond_broadcast(&tasks_cond);
+    	pthread_mutex_unlock(&tasks_mutex);
+    	
+    	pthread_mutex_lock(&tasks_mutex);
+    	pthread_cond_broadcast(&free_cond);
+    	pthread_mutex_unlock(&tasks_mutex);
+    	
+    	pthread_mutex_lock(performance_changed_mutex);
+    	pthread_cond_broadcast(performance_changed_cond);
+    	pthread_mutex_unlock(performance_changed_mutex);
+    	
+    	for(int i = 0; i < 2; i++) pthread_cancel(vcpu_thread[i]);
+    	pthread_cancel(task_thread);
 		pthread_cancel(maintenance_thread);
+		pthread_cancel(performance_thread);
+    	
+    	for(int i = 0; i < 2; i++) pthread_join(vcpu_thread[i], NULL);
+    	pthread_join(task_thread, NULL);
+		pthread_join(maintenance_thread, NULL);
+		pthread_join(performance_thread, NULL);
+		printf("%s joined\n", es_name);
         clean_es_resources();
+        printf("%s: died\n", es_name);
         exit(0);
-    }
+    }printf("ES unexpected signal %d\n", signum);
 }
 
 
@@ -308,14 +387,19 @@ int edge_server(int es_n){
 	char msg[MSG_LEN];
 	edge_server_n = es_n;
 	
-	sigfillset(&es_block_set); // will have all possible signals blocked when our handler is called
+	//sigfillset(&es_block_set); // will have all possible signals blocked when our handler is called
 
-    //define a handler for SIGINT; when entered all possible signals are blocked
+    //define a handler for SIGUSR1; when entered all possible signals are blocked
     es_new_action.sa_flags = 0;
-    es_new_action.sa_mask = es_block_set;
+    es_new_action.sa_mask = block_set;
     es_new_action.sa_handler = &es_termination_handler;
 
-    sigaction(SIGINT,&es_new_action,NULL);
+    sigaction(SIGUSR1,&es_new_action,NULL);
+    
+    es_new_action.sa_handler = SIG_IGN;
+    
+    sigaction(SIGINT, &es_new_action, NULL);
+    sigaction(SIGTSTP, &es_new_action, NULL);
 	
 	shm_lock();
 	EdgeServer this = get_edge_server(edge_server_n);
@@ -330,7 +414,7 @@ int edge_server(int es_n){
 	sprintf(msg, "%s READY", es_name);
     
 	log_write(msg);
-
+	
     //notify the maintenance manager of the creation of the edge_server
     int es_msg_type = edge_server_n * 2;
     mm_msg.msg_type = es_msg_type;
@@ -343,6 +427,9 @@ int edge_server(int es_n){
     }
     //log_write(strerror(errno));
     //printf("%ld %s\n", mm_msg.msg_type, mm_msg.msg_text);
+	
+	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+	
 	for(int i = 0; i < 2; i++){
 		ids[i] = i;
 		pthread_create(&vcpu_thread[i], NULL, vcpu, &ids[i]);
@@ -351,6 +438,12 @@ int edge_server(int es_n){
 	pthread_create(&maintenance_thread, NULL, enter_maintenance, NULL);
 	pthread_create(&performance_thread, NULL, check_performance, NULL);
 	pthread_create(&task_thread, NULL, receive_tasks, NULL);
+	
+	
+    for(int i = 0; i < 2; i++) pthread_join(vcpu_thread[i], NULL);
+    pthread_join(task_thread, NULL);
+	pthread_join(maintenance_thread, NULL);
+	pthread_join(performance_thread, NULL);
 	
 	clean_es_resources();
 	return 0;

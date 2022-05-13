@@ -10,7 +10,7 @@ Gonçalo Fernandes Diogo de Almeida, nº2020218868
 #include "edge_server.h"
 
 #define PIPE_NAME "TASK_PIPE"
-//#define DEBUG_TM //uncomment this line to print task manager debug messages
+#define DEBUG_TM //uncomment this line to print task manager debug messages
 
 int queue_pos;
 
