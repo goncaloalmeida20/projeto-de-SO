@@ -30,8 +30,10 @@ sigset_t block_set;
 
 int create_shm();
 void close_shm();
-void shm_lock();
-void shm_unlock();
+void shm_r_lock();
+void shm_w_lock();
+void shm_r_unlock();
+void shm_w_unlock();
 EdgeServer get_edge_server(int n);
 void set_edge_server(EdgeServer* es, int n);
 int get_performance_change_flag();

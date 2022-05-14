@@ -21,19 +21,19 @@ struct sigaction mon_new_action;
 
 int change_performance(){
 	int tm_percentage, min_wait_time;
-	shm_lock();
+	shm_r_lock();
     tm_percentage = get_tm_percentage();
     min_wait_time = get_min_wait_time();
     
     if(tm_percentage > 80 && min_wait_time > max_wait){
-    	shm_unlock();
+    	shm_r_unlock();
     	return 2;
     }
     if(tm_percentage < 20){
-    	shm_unlock();
+    	shm_r_unlock();
     	return 1;
     }
-    shm_unlock();
+    shm_r_unlock();
     return 0;
 
 }
@@ -55,9 +55,9 @@ void *monitor_thread(){
         }
         pthread_mutex_unlock(monitor_mutex);
         
-        shm_lock();
+        shm_w_lock();
         set_performance_change_flag(ch_perf);
-        shm_unlock();
+        shm_w_unlock();
         sprintf(msg, "MONITOR: CHANGED PERFORMANCE FLAG TO %d", ch_perf);
         log_write(msg);
         
@@ -85,7 +85,11 @@ void mon_termination_handler(int signum) {
     	pthread_cancel(mon_thread);
     	pthread_join(mon_thread, NULL);
         exit(0);
-    }printf("MON unexpected signal %d\n", signum);
+    }
+    //unexpected signal received
+    char log[MSG_LEN];
+    sprintf(log, "MONITOR RECEIVED SIGNAL %d", signum);
+    log_write(log);
 }
 
 void monitor(){
@@ -103,9 +107,9 @@ void monitor(){
     sigaction(SIGINT, &mon_new_action, NULL);
     sigaction(SIGTSTP, &mon_new_action, NULL);
 	
-	shm_lock();
+	shm_w_lock();
 	set_performance_change_flag(1);
-	shm_unlock();
+	shm_w_unlock();
 	
 	old_perf = 1;
 	
@@ -113,6 +117,5 @@ void monitor(){
 		
 	pthread_create(&mon_thread, NULL, monitor_thread, NULL);
 
-	printf("MON ola\n");
 	pthread_join(mon_thread, NULL);
 }

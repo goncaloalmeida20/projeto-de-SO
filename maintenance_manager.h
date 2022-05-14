@@ -18,4 +18,4 @@ typedef struct
 
 void maintenance_manager();
 
-#endif //MAINTENANCE_MANAGER_H
+#endif

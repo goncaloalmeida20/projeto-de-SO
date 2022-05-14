@@ -19,6 +19,7 @@
 #include "edge_server.h"
 
 #define SHM_MUTEX "SHM_MUTEX"
+#define STOP_WRITERS "STOP_WRITERS"
 
 typedef struct {
     // Flag for the monitor to change / Performance mode of the edge servers / Percentage of tasks within the task manager
@@ -30,15 +31,17 @@ typedef struct {
     pthread_cond_t dispatcher_cond, monitor_cond, performance_changed_cond;
 } sh_mem;
 
-sem_t* shm_mutex;
+sem_t *shm_mutex, *stop_writers;
 sh_mem *shared_var;
-int shmid;
+int shmid, n_readers = 0;
 
-int create_shm_mutex(){
+int create_shm_sems(){
 	sem_unlink(SHM_MUTEX);
 	if((shm_mutex = sem_open(SHM_MUTEX,O_CREAT|O_EXCL,0700,1)) == SEM_FAILED)	
 		return -1;
-		
+	sem_unlink(STOP_WRITERS);
+	if((stop_writers = sem_open(STOP_WRITERS,O_CREAT|O_EXCL,0700,1)) == SEM_FAILED)	
+		return -1;
 	return 0;
 }
 
@@ -56,7 +59,7 @@ int create_shm(){
 	}
 	
 	//create shared memory mutex
-	if(create_shm_mutex() < 0){
+	if(create_shm_sems() < 0){
 		log_write("ERROR CREATING SHARED MEMORY MUTEX");
 		return -1;
 	}
@@ -65,15 +68,31 @@ int create_shm(){
 }
 
 
-//always use shm_lock before accessing the shared memory
-//and shm_unlock after the access
-void shm_lock(){
+//multiple readers but only one writer
+//r-> reader, w-> writer
+//always use unlock after lock (either both r or both w)
+void shm_r_lock(){
 	sem_wait(shm_mutex);
-}
-
-void shm_unlock(){
+	n_readers++;
+	if(n_readers == 1) sem_wait(stop_writers);
 	sem_post(shm_mutex);
 }
+
+void shm_w_lock(){
+	sem_wait(stop_writers);
+}
+
+void shm_r_unlock(){
+	sem_wait(shm_mutex);
+	n_readers--;
+	if(n_readers == 0) sem_post(stop_writers);
+	sem_post(shm_mutex);
+}
+
+void shm_w_unlock(){
+	sem_post(stop_writers);
+}
+
 
 
 EdgeServer get_edge_server(int n){
@@ -187,7 +206,7 @@ int get_n_executed_tasks(){
 void print_stats(){
     int i, n_maintenances, n_tasks_done, n_exec_tasks, n_not_exec_tasks;
     float avg_time_of_res;
-    shm_lock();
+    shm_r_lock();
     n_exec_tasks = get_n_executed_tasks();
     n_not_exec_tasks = get_n_not_executed_tasks();
     avg_time_of_res = get_avg_res_time();
@@ -201,17 +220,19 @@ void print_stats(){
         n_tasks_done = this.n_tasks_done;
         printf("Edge server %d:\n\tNumber of tasks executed: %d\n\tNumber of maintenances done: %d\n", i, n_tasks_done, n_maintenances);
     }
-    shm_unlock();
+    shm_r_unlock();
 }
 
-void close_shm_mutex(){
+void close_shm_sems(){
 	sem_close(shm_mutex);
 	sem_unlink(SHM_MUTEX);
+	sem_close(stop_writers);
+	sem_unlink(STOP_WRITERS);
 }
 
 //clean up resources used
 void close_shm(){
-	close_shm_mutex();
+	close_shm_sems();
 	shmctl(shmid, IPC_RMID, NULL);
 	shmdt(shared_var);
 }

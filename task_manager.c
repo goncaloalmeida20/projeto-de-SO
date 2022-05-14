@@ -45,18 +45,18 @@ int add_task_to_queue(Task *t){
 	if(queue_size >= queue_pos){
 		sprintf(msg, "TASK %ld DELETED (THE TASK QUEUE IS FULL)", t->id);
 		log_write(msg);
-		shm_lock();
+		shm_w_lock();
 		set_n_not_executed_tasks(get_n_not_executed_tasks() + 1);
-		shm_unlock();	
+		shm_w_unlock();	
 		return -1;
 	}
 	queue[queue_size++] = *t;
-	shm_lock();
+	shm_w_lock();
 	#ifdef DEBUG_TM
 	printf("Setting task queue percentage to %d\n", (int)(queue_size*100.0/queue_pos));
 	#endif
 	set_tm_percentage((int)(queue_size*100.0/queue_pos));
-	shm_unlock();
+	shm_w_unlock();
 	
 	pthread_mutex_lock(monitor_mutex);
 	pthread_cond_signal(monitor_cond);
@@ -77,12 +77,12 @@ int remove_task_from_queue(Task *t){
 			for(j = i; j < queue_size; j++){
 				queue[j] = queue[j+1];
 			}
-			shm_lock();
+			shm_w_lock();
 			#ifdef DEBUG_TM
 			printf("Setting task queue percentage to %d\n", (int)(queue_size*100.0/queue_pos));
 			#endif
 			set_tm_percentage((int)(queue_size*100.0/queue_pos));
-			shm_unlock();
+			shm_w_unlock();
 			
 			pthread_mutex_lock(monitor_mutex);
 			pthread_cond_signal(monitor_cond);
@@ -197,9 +197,9 @@ void* scheduler(){
 
 int server_updated(double old_available_time, int es_n, int vcpu_n) {
 	//check if the server updated its vcpu next available time
-	shm_lock();
+	shm_r_lock();
 	double new_available_time = get_edge_server(es_n).vcpu[vcpu_n].next_available_time;
-	shm_unlock();
+	shm_r_unlock();
 	//printf("SERVER UPDATED %lf %lf\n", old_available_time, new_available_time);
 	return new_available_time != old_available_time;
 }
@@ -219,10 +219,10 @@ int get_free_edge_server(Task *t, int *free_vcpu){
 		#ifdef DEBUG_TM
 		printf("Checking edge server %d\n", i+1);
 		#endif
-		shm_lock();
+		shm_r_lock();
 		EdgeServer es = get_edge_server(i+1);
 		if(es.performance_level == 0){
-			shm_unlock();
+			shm_r_unlock();
 			continue;
 		}
 		 
@@ -230,7 +230,7 @@ int get_free_edge_server(Task *t, int *free_vcpu){
 			#ifdef DEBUG_TM
 			printf("Dispatcher: Selecting Edge Server %s VCPU: 0\n", es.name);
 			#endif
-			shm_unlock();
+			shm_r_unlock();
 			*free_vcpu = 0;
 			return i+1;
 		}
@@ -238,11 +238,11 @@ int get_free_edge_server(Task *t, int *free_vcpu){
 			#ifdef DEBUG_TM
 			printf("Dispatcher: Selecting Edge Server %s VCPU: 1\n", es.name);
 			#endif
-			shm_unlock();
+			shm_r_unlock();
 			*free_vcpu = 1;
 			return i+1;
 		}
-		shm_unlock();
+		shm_r_unlock();
 	}
 	return 0;
 
@@ -257,21 +257,21 @@ int check_free_edge_servers(){
 		#ifdef DEBUG_TM
 		printf("Checking edge server %d\n", i+1);
 		#endif
-		shm_lock();
+		shm_r_lock();
 		EdgeServer es = get_edge_server(i+1);
 		//printf("DSP CHECK %s %d\n", es.name, es.performance_level);
 		if(es.performance_level == 0){
-		 shm_unlock();
+		 shm_r_unlock();
 		 continue;
         }
         if((es.performance_level > 0 && es.vcpu[0].next_available_time < ct) || (es.performance_level == 2 && es.vcpu[1].next_available_time < ct)){
 			#ifdef DEBUG_TM
 			printf("Dispatcher: There are free edge servers (%s)\n", es.name);
 			#endif
-			shm_unlock();
+			shm_r_unlock();
 			return 1;
 		}
-		shm_unlock();
+		shm_r_unlock();
 	}
 	return 0;
 }
@@ -329,9 +329,9 @@ void* dispatcher(){
 			}
 			
 			//no vcpu found with enough processing capacity needed to execute the task in the time left
-			shm_lock();
+			shm_w_lock();
 			set_n_not_executed_tasks(get_n_not_executed_tasks() + 1);
-			shm_unlock();		
+			shm_w_unlock();		
 			sprintf(msg, "DISPATCHER: TASK %ld REMOVED FROM QUEUE (NOT ENOUGH TIME LEFT TO EXECUTE)", queue[min_priority].id);
 			log_write(msg);
 			remove_task_from_queue(&queue[min_priority]);
@@ -355,12 +355,12 @@ void* dispatcher(){
 		remove_task_from_queue(&queue[min_priority]);
 		
 		//get the name of the server where the task will be executed
-		shm_lock();
+		shm_r_lock();
 		EdgeServer es_task = get_edge_server(es);
 		es_name = es_task.name;
 		double es_old_available_time = es_task.vcpu[free_vcpu].next_available_time;
 		//printf("DSP %lf %s %d\n", es_old_available_time, es_name, free_vcpu);
-		shm_unlock();
+		shm_r_unlock();
 		
 		sprintf(msg, "DISPATCHER: TASK %d SELECTED FOR EXECUTION ON %s", t.id, es_name);
 		log_write(msg);
@@ -370,11 +370,11 @@ void* dispatcher(){
 		#ifdef DEBUG_TM
 		printf("Setting waiting time to %d seconds (rounded up)\n", (int)(task_wait_time) + 1);
 		#endif
-		shm_lock();
+		shm_w_lock();
 		set_min_wait_time((int)(task_wait_time) + 1);
 		int total_tasks = get_n_executed_tasks();
 		set_avg_res_time((get_avg_res_time()*total_tasks + task_wait_time)/ (total_tasks+1));
-		shm_unlock();
+		shm_w_unlock();
 		
 		//notify monitor that changes were made
 		pthread_mutex_lock(monitor_mutex);
@@ -405,7 +405,6 @@ void *read_from_task_pipe(){
 	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
 	while(1){
 		//read message from the named pipe
-		printf("reading\n");
 		rt_reading = 1;
 		if((read_len = read(task_pipe_fd, msg, MSG_LEN)) > 0){
 			rt_reading = 0;
@@ -431,10 +430,11 @@ void *read_from_task_pipe(){
 				}
 				pthread_mutex_unlock(&queue_mutex);	
 			}else if(read_len == 6 && strncmp(msg, "STATS", 5) == 0){
-				log_write("PRINT STATS");
+				log_write("STATISTICS:");
 				print_stats();
 			}else if(read_len == 5 && strncmp(msg, "EXIT", 4) == 0){
-				log_write("EXIT");
+				log_write("TASK MANAGER: EXIT RECEIVED FROM TASK PIPE");
+				kill(getppid(), SIGINT);
 				break;
 			}else{
 				sprintf(msg_temp, "WRONG COMMAND => %s", msg);
@@ -472,12 +472,11 @@ void tm_termination_handler(int signum) {
     	int i;
     	char msg[MSG_LEN];
     	
-    	log_write("WAITING FOR THE LAST TASKS TO FINISH\n");
-    	
-    	printf("TM: sigusr1\n");
+    	log_write("WAITING FOR THE LAST TASKS TO FINISH");
+
     	
     	//the simulator is going to end
-    	
+ 
     	tm_leave_flag = 1;
     	pthread_cancel(read_thread);
     	pthread_join(read_thread, NULL);
@@ -497,19 +496,30 @@ void tm_termination_handler(int signum) {
 		pthread_join(dispatcher_thread, NULL);
     	
     	for(i = 0; i < edge_server_number; i++){
+    		#ifdef DEBUG_TM
     		printf("TM killing %d\n", i+1);
+    		#endif
     		kill(edge_servers_pid[i], SIGUSR1);
     		wait(NULL);
     	}
     	for(i = 0; i < queue_size; i++){
+    		shm_w_lock();
+			set_n_not_executed_tasks(get_n_not_executed_tasks() + 1);
+			shm_w_unlock();	
     		sprintf(msg, "TASK %ld NOT EXECUTED (SIMULATOR CLOSING)", queue[i].id);
     		log_write(msg);
     	}
     	print_stats();
         clean_tm_resources();
+        #ifdef DEBUG_TM
         printf("TM DIED\n");
+        #endif
         exit(0);
-    }printf("TM unexpected signal %d\n", signum);
+    }
+    //unexpected signal received
+    char log[MSG_LEN];
+    sprintf(log, "TASK MANAGER RECEIVED SIGNAL %d", signum);
+    log_write(log);
 }
 
 int task_manager(){
@@ -552,7 +562,6 @@ int task_manager(){
 		if((edge_servers_pid[i] = fork()) == 0){
 			close(unnamed_pipe[i][1]);
 			edge_server(i+1);
-			close(unnamed_pipe[i][0]);
 			exit(0);
 		}
 		close(unnamed_pipe[i][0]);

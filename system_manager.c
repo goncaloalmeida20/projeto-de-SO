@@ -83,91 +83,7 @@ int read_file(FILE *fp){
     }
 }
 
-void clean_resources(){
-	printf("SM CR\n");
-    unlink(PIPE_NAME);
-    pthread_cond_broadcast(monitor_cond);
-    pthread_cond_broadcast(performance_changed_cond);
-    pthread_cond_destroy(monitor_cond);
-    pthread_cond_destroy(performance_changed_cond);
-    pthread_condattr_destroy(&monitor_attrcondv);
-    pthread_mutex_destroy(monitor_mutex);
-    pthread_mutexattr_destroy(&monitor_attrmutex);
-    pthread_condattr_destroy(&perf_ch_attrcondv);
-    pthread_mutex_destroy(performance_changed_mutex);
-    pthread_mutexattr_destroy(&perf_ch_attrmutex);
-    msgctl(mqid, IPC_RMID, 0);
-    close_shm();
-    log_write("SIMULATOR CLOSING");
-    close_log();
-}
-
-void wait_processes(){
-	int i;
-	#ifdef DEBUG
-	printf("Waiting for processes to finish...\n");
-	#endif
-    for(i = 0; i < N_PROCESSES; i++){
-     	printf("WAIT %d\n", i);
-     	wait(NULL);
-	}
-	clean_resources();
-}
-
-void signal_handler(int signum) {
-    if(signum == SIGINT){ // handling of CTRL-C
-    	log_write("SIGNAL SIGINT RECEIVED");
-    	kill(task_manager_pid, SIGUSR1);
-    	kill(monitor_pid, SIGUSR1);
-    	kill(maintenance_manager_pid, SIGUSR1);
-        wait_processes();
-        exit(0);
-    }
-    else if(signum == SIGTSTP){ // handling of CTRL-Z
-    	sigprocmask(SIG_BLOCK, &block_set, NULL);
-    	log_write("SIGNAL SIGTSTP RECEIVED");
-        print_stats();
-        sigprocmask(SIG_UNBLOCK, &block_set, NULL);
-        //wait_processes();
-    }
-}
-
-int main(int argc, char *argv[]){
-	int i;
-
-    if(argc != 2){
-        printf("WRONG NUMBER OF PARAMETERS\n");
-        exit(1);
-    }
-    
-    sigfillset(&block_set); // will have all possible signals blocked when our handler is called
-    sigprocmask(SIG_BLOCK, &block_set, NULL);
-
-    
-    #ifdef DEBUG
-	printf("Creating log...\n");
-	#endif
-    create_log();
-    
-    
-    
-	
-	
-    // Read from config file
-    if(read_file(fopen(argv[1], "r")) < 0) {
-        exit(1);
-    }
-
-    log_write("OFFLOAD SIMULATOR STARTING");
-	
-	#ifdef DEBUG
-	printf("Creating shared memory...\n");
-    #endif
-	// Shared memory created
-    if(create_shm() < 0) {
-        exit(1);
-    }
-
+void create_mutexes_conds(){
 	monitor_mutex = get_monitor_mutex();
     // Initialize monitor mutex
     pthread_mutexattr_init(&monitor_attrmutex);
@@ -189,6 +105,104 @@ int main(int argc, char *argv[]){
     pthread_condattr_init(&perf_ch_attrcondv);
     pthread_condattr_setpshared(&perf_ch_attrcondv, PTHREAD_PROCESS_SHARED);
     pthread_cond_init(performance_changed_cond, &perf_ch_attrcondv);
+}
+
+void clean_resources(){
+    //signal possible waiting threads
+    
+    pthread_mutex_lock(monitor_mutex);
+    pthread_cond_broadcast(monitor_cond);
+    pthread_mutex_unlock(monitor_mutex);
+    
+    pthread_mutex_lock(performance_changed_mutex);
+    pthread_cond_broadcast(performance_changed_cond);
+    pthread_mutex_unlock(performance_changed_mutex);
+    
+    //clean resources
+    pthread_cond_destroy(monitor_cond);
+    pthread_cond_destroy(performance_changed_cond);
+    pthread_condattr_destroy(&monitor_attrcondv);
+    pthread_mutex_destroy(monitor_mutex);
+    pthread_mutexattr_destroy(&monitor_attrmutex);
+    pthread_condattr_destroy(&perf_ch_attrcondv);
+    pthread_mutex_destroy(performance_changed_mutex);
+    pthread_mutexattr_destroy(&perf_ch_attrmutex);
+    unlink(PIPE_NAME);
+    msgctl(mqid, IPC_RMID, 0);
+    close_shm();
+    log_write("SIMULATOR CLOSING");
+    close_log();
+}
+
+void wait_processes(){
+	int i;
+	#ifdef DEBUG
+	printf("Waiting for processes to finish...\n");
+	#endif
+    for(i = 0; i < N_PROCESSES; i++){
+    	#ifdef DEBUG
+     	printf("WAIT %d\n", i);
+     	#endif
+     	wait(NULL);
+	}
+	clean_resources();
+}
+
+void signal_handler(int signum) {
+    if(signum == SIGINT){ //close simulator
+    	log_write("SIGNAL SIGINT RECEIVED");
+    	kill(task_manager_pid, SIGUSR1);
+    	kill(monitor_pid, SIGUSR1);
+    	kill(maintenance_manager_pid, SIGUSR1);
+        wait_processes();
+        exit(0);
+    }
+    else if(signum == SIGTSTP){ //show stats
+    	sigprocmask(SIG_BLOCK, &block_set, NULL);
+    	log_write("SIGNAL SIGTSTP RECEIVED");
+        print_stats();
+        sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+    }else{
+    	char msg[MSG_LEN];
+    	sprintf(msg, "RECEIVED SIGNAL %d\n", signum);
+    	log_write(msg);
+    }
+}
+
+int main(int argc, char *argv[]){
+	int i;
+
+    if(argc != 2){
+        printf("WRONG NUMBER OF PARAMETERS\n");
+        exit(1);
+    }
+    
+    sigfillset(&block_set); // will have all possible signals blocked when our handler is called
+    sigprocmask(SIG_BLOCK, &block_set, NULL);
+
+    
+    #ifdef DEBUG
+	printf("Creating log...\n");
+	#endif
+    create_log();
+    
+  
+    // Read from config file
+    if(read_file(fopen(argv[1], "r")) < 0) {
+        exit(1);
+    }
+
+    log_write("OFFLOAD SIMULATOR STARTING");
+	
+	#ifdef DEBUG
+	printf("Creating shared memory...\n");
+    #endif
+	// Shared memory created
+    if(create_shm() < 0) {
+        exit(1);
+    }
+	
+	create_mutexes_conds();
 
     // Creates the named pipe if it doesn't exist yet
     unlink(PIPE_NAME);
@@ -197,7 +211,7 @@ int main(int argc, char *argv[]){
         exit(1);
     }
 
-	shm_lock();
+	shm_w_lock();
 
     // Create Message Queue
     if ((mqid = msgget(IPC_PRIVATE, IPC_CREAT|0777)) < 0)
@@ -219,18 +233,18 @@ int main(int argc, char *argv[]){
 
 	// Set the performance change flag to 0 (normal)
 	set_performance_change_flag(0);
-	shm_unlock();
+	shm_w_unlock();
 	free(edge_servers);
 	
 	#ifdef DEBUG
-	shm_lock();
+	shm_r_lock();
 	printf("Checking shared memory contents...\n");
 	for(i = 0; i < edge_server_number; i++){
 		EdgeServer es = get_edge_server(i+1);
 		printf("Edge Server %d: %s %d %d\n", i+1, es.name, es.vcpu[0].processing_capacity, es.vcpu[1].processing_capacity);
 	}
 	printf("Performance change flag: %d\n", get_performance_change_flag());
-	shm_unlock();
+	shm_r_unlock();
 	#endif
 
     // Create Task Manager
@@ -262,12 +276,6 @@ int main(int argc, char *argv[]){
     new_action.sa_handler = &signal_handler;
 
     sigaction(SIGINT,&new_action,NULL);
-    
-    //new set with all signals except SIGINT and SIGTSTP
-    sigset_t no_sigint_sigtstp_set = block_set; 
-    sigdelset(&no_sigint_sigtstp_set, SIGTSTP);
-    sigdelset(&no_sigint_sigtstp_set, SIGINT);
-    new_action.sa_mask = no_sigint_sigtstp_set;
     sigaction(SIGTSTP,&new_action,NULL);
 	
 	sigprocmask(SIG_UNBLOCK, &block_set, NULL);

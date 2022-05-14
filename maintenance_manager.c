@@ -19,9 +19,12 @@
 #include <semaphore.h>
 #include "maintenance_manager.h"
 #include "shared_memory.h"
+#include "log.h"
+
+#define NAME_LEN 50
 
 pthread_t * mm_thread;
-int mqid, edge_server_number, * id, mm_leave_flag = 0;
+int mqid, edge_server_number, * id;
 sem_t maintenance_counter;
 sigset_t mm_block_set;
 struct sigaction mm_new_action;
@@ -32,19 +35,22 @@ void clean_mm_resources(){
     free(mm_thread);
 }
 
-void mm_termination_handler(int signum) {
-    if(signum == SIGUSR1){ // handling of SIGUSR1
-    	printf("Maintenance manager: sigusr1\n");
-    	mm_leave_flag = 1;
+void mm_signal_handler(int signum) {
+    if(signum == SIGUSR1){ // simulator closing
+    	log_write("MAINTENANCE MANAGER CLEANING UP");
+    	//cancel threads and wait for them to exit
     	for(int i = 0; i < edge_server_number; i++){ 
     		pthread_cancel(mm_thread[i]);
     		pthread_join(mm_thread[i], NULL);
     	}
     	clean_mm_resources();
-    	printf("MM DIED\n");
+    	log_write("MAINTENANCE MANAGER CLOSING");
         exit(0);
     }
-    printf("MM unexpected signal %d\n", signum);
+    //unexpected signal received
+    char log[MSG_LEN];
+    sprintf(log, "MAINTENANCE MANAGER RECEIVED SIGNAL %d", signum);
+    log_write(log);
 }
 
 void * maintenance(void *t){
@@ -52,30 +58,63 @@ void * maintenance(void *t){
     int interval_of_mm, time_bw_mm;
     int es_id = *((int *) t);
     int mm_msg_type = es_id * 2 + 1, es_msg_type = es_id * 2;
+    char log[MSG_LEN], es_name[NAME_LEN];
     
 	srand(time(NULL));
 	
+	//block all signals in this thread
 	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
+	
+	shm_r_lock();
+	strcpy(es_name, get_edge_server(es_id).name);
+	shm_r_unlock();
 	
     // Maintenance of the Edge Servers
     while(1){
+    	//generate random maintenance time and interval between maintenances
     	time_bw_mm = rand() % 5 + 1;
     	interval_of_mm = rand() % 5 + 1;
         sleep(time_bw_mm);
-        pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
-        sem_wait(&maintenance_counter);
-
         
+        //ensure that the edge servers aren't all in maintenance at the same time
+        sem_wait(&maintenance_counter);
+        
+        //maintenances need to end before closing the program
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+		
+        //send maintenance start message to edge server
         msg.msg_type = mm_msg_type;
         strcpy(msg.msg_text, "START");
         msgsnd(mqid, &msg, sizeof(Message) - sizeof(long), 0);
+        //receive confirmation from edge server
         msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), es_msg_type, 0);
+        if(strcmp(msg.msg_text, "ES_ABORT") == 0){
+        	sprintf(log, "MAITENANCE MANAGER RECEIVED ABORT MESSAGE FROM EDGE SERVER %d", es_id);
+        	log_write(log);
+        	sem_post(&maintenance_counter);
+        	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        	break;
+        } else if(strcmp(msg.msg_text, "ES_START") != 0){
+        	sprintf(log, "MAITENANCE MANAGER RECEIVED WRONG MESSAGE FROM EDGE SERVER %d", es_id);
+        	log_write(log);
+        	sem_post(&maintenance_counter);
+        	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        	continue;
+        }
+        //do maintenance
         sleep(interval_of_mm);
         
+        //send maintenance end message to edge server
         msg.msg_type = mm_msg_type;
         strcpy(msg.msg_text, "END");
         msgsnd(mqid, &msg, sizeof(Message) - sizeof(long), 0);
+        //receive confirmation from edge server
         msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), es_msg_type, 0);
+        if(strcmp(msg.msg_text, "ES_END") != 0){
+        	sprintf(log, "MAITENANCE MANAGER RECEIVED WRONG MESSAGE FROM EDGE SERVER %d\n", es_id);
+        	log_write(log);
+        }
+        
         sem_post(&maintenance_counter);
         
         pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
@@ -88,36 +127,34 @@ void maintenance_manager(int mq_id, int es_num) {
     int i, es_msg_type;
     mqid = mq_id;
     edge_server_number = es_num;
-    
-    //sigfillset(&mm_block_set); // will have all possible signals blocked when our handler is called
 
-    //define a handler for SIGINT; when entered all possible signals are blocked
-    mm_new_action.sa_flags = 0;
+    //define a handler for SIGUSR1
+    mm_new_action.sa_flags = SA_RESTART;
     mm_new_action.sa_mask = block_set;
-    mm_new_action.sa_handler = &mm_termination_handler;
-
+    mm_new_action.sa_handler = &mm_signal_handler;
     sigaction(SIGUSR1,&mm_new_action,NULL);
     
+    //ignore SIGINT and SIGTSTP
     mm_new_action.sa_handler = SIG_IGN;
-    
     sigaction(SIGINT, &mm_new_action, NULL);
     sigaction(SIGTSTP, &mm_new_action, NULL);
     
     sem_init(&maintenance_counter, 0, edge_server_number - 1);
-    // The Maintenance Manager is informed of the creation of the Edge Servers
+    
+    //the maintenance manager is informed of the creation of the Edge Servers
     for(i = 0; i < edge_server_number; i++)
     {
         es_msg_type = (i + 1) * 2;
-        // Waits for a message
+        //waits for a message
         msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), es_msg_type, 0);
-        //printf("mm %s %d\n", msg.msg_text, es_msg_type);
     }
-
+	
     mm_thread = (pthread_t *) malloc(sizeof(pthread_t) * edge_server_number);
     id = (int *) malloc(sizeof(int) * edge_server_number);
 	
 	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
 	
+	//create one thread to manage each edge server
     for(i = 0; i < edge_server_number; i++){
         id[i] = i + 1;
         pthread_create(&mm_thread[i], NULL, maintenance, &id[i]);
