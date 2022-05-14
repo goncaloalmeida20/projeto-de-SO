@@ -33,7 +33,6 @@ pthread_mutexattr_t mutexattr;
 pthread_condattr_t condattr;
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER, end_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t scheduler_cond = PTHREAD_COND_INITIALIZER;
-//sigset_t tm_block_set;
 struct sigaction tm_new_action;
 
 
@@ -58,6 +57,7 @@ int add_task_to_queue(Task *t){
 	set_tm_percentage((int)(queue_size*100.0/queue_pos));
 	shm_w_unlock();
 	
+	//notify monitor about the queue percentage change
 	pthread_mutex_lock(monitor_mutex);
 	pthread_cond_signal(monitor_cond);
 	pthread_mutex_unlock(monitor_mutex);
@@ -84,6 +84,7 @@ int remove_task_from_queue(Task *t){
 			set_tm_percentage((int)(queue_size*100.0/queue_pos));
 			shm_w_unlock();
 			
+			//notify monitor about the queue percentage change
 			pthread_mutex_lock(monitor_mutex);
 			pthread_cond_signal(monitor_cond);
 			pthread_mutex_unlock(monitor_mutex);
@@ -137,6 +138,8 @@ void check_expired(double current_time){
 
 void* scheduler(){
 	double current_time;
+	
+	//block all signals in this thread
 	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
 	while(1){
 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
@@ -185,7 +188,7 @@ void* scheduler(){
 		scheduler_start = 0;
 		pthread_mutex_unlock(&queue_mutex);
 		
-		//Signal dispatcher if it is waiting 
+		//signal dispatcher if it is waiting 
 		pthread_mutex_lock(dispatcher_mutex);
 		pthread_cond_signal(dispatcher_cond);
 		pthread_mutex_unlock(dispatcher_mutex);
@@ -200,14 +203,13 @@ int server_updated(double old_available_time, int es_n, int vcpu_n) {
 	shm_r_lock();
 	double new_available_time = get_edge_server(es_n).vcpu[vcpu_n].next_available_time;
 	shm_r_unlock();
-	//printf("SERVER UPDATED %lf %lf\n", old_available_time, new_available_time);
 	return new_available_time != old_available_time;
 }
 
 
-int enough_time_left(VCPU *v, Task *t, double ct){
-	//printf("ct%lf at%lf th%d prcp%d tempo%lf\n", ct, v->next_available_time, t->thousand_inst,  v->processing_capacity, t->thousand_inst/1000.0/v->processing_capacity);
-	return ct > v->next_available_time && ct + t->thousand_inst/1000.0/v->processing_capacity < t->arrival_time + t->max_exec_time;
+int enough_time_left(VCPU *v, Task *t, double current_time){
+	double task_execution_time = t->thousand_inst/1000.0/v->processing_capacity;
+	return current_time > v->next_available_time && current_time + task_execution_time < t->arrival_time + t->max_exec_time;
 }
 
 
@@ -259,7 +261,6 @@ int check_free_edge_servers(){
 		#endif
 		shm_r_lock();
 		EdgeServer es = get_edge_server(i+1);
-		//printf("DSP CHECK %s %d\n", es.name, es.performance_level);
 		if(es.performance_level == 0){
 		 shm_r_unlock();
 		 continue;
@@ -281,6 +282,8 @@ void* dispatcher(){
 	char msg[MSG_LEN], * es_name;
 	VCPUTask t;
 	double task_arrival_time, task_wait_time;
+	
+	//block all signals in this thread
 	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
 	
 	while(1){
@@ -338,6 +341,7 @@ void* dispatcher(){
 			
 		}
 		if(!es || free_vcpu == -1){
+			//no edge server found with vcpus with enough processing capacity needed to execute the task in the time left
 			#ifdef DEBUG_TM
 			printf("Dispatcher: No task selected\n");
 			#endif
@@ -359,7 +363,6 @@ void* dispatcher(){
 		EdgeServer es_task = get_edge_server(es);
 		es_name = es_task.name;
 		double es_old_available_time = es_task.vcpu[free_vcpu].next_available_time;
-		//printf("DSP %lf %s %d\n", es_old_available_time, es_name, free_vcpu);
 		shm_r_unlock();
 		
 		sprintf(msg, "DISPATCHER: TASK %d SELECTED FOR EXECUTION ON %s", t.id, es_name);
@@ -456,6 +459,8 @@ void clean_tm_resources(){
 		free(unnamed_pipe[i]);
 	}
 	free(unnamed_pipe);
+	
+	//clean other resources
 	free(edge_servers_pid);
 	free(queue);
 	pthread_mutex_destroy(&queue_mutex);
@@ -495,6 +500,7 @@ void tm_termination_handler(int signum) {
     	pthread_join(scheduler_thread, NULL);
 		pthread_join(dispatcher_thread, NULL);
     	
+    	//signal edge servers
     	for(i = 0; i < edge_server_number; i++){
     		#ifdef DEBUG_TM
     		printf("TM killing %d\n", i+1);
@@ -579,18 +585,17 @@ int task_manager(){
 		return -1;
 	}
 	
-	//define a handler for SIGINT; when entered all possible signals are blocked
+	//define a handler for SIGUSR1
     tm_new_action.sa_flags = 0;
     tm_new_action.sa_mask = block_set;
     tm_new_action.sa_handler = &tm_termination_handler;
-
     sigaction(SIGUSR1,&tm_new_action,NULL);
     
+    //ignore SIGINT and SIGTSTP (these are handled by the system manager)
     tm_new_action.sa_handler = SIG_IGN;
-    
     sigaction(SIGINT, &tm_new_action, NULL);
     sigaction(SIGTSTP, &tm_new_action, NULL);
-	
+    
 	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
 	
 	//create scheduler thread
@@ -600,9 +605,6 @@ int task_manager(){
 	//create the thread that will read from the task pipe
 	pthread_create(&read_thread, NULL, read_from_task_pipe, NULL);
 
-    
-    
-	
 	pthread_join(read_thread, NULL);
 	pthread_join(scheduler_thread, NULL);
 	pthread_join(dispatcher_thread, NULL);

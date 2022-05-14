@@ -22,10 +22,10 @@
 #define STOP_WRITERS "STOP_WRITERS"
 
 typedef struct {
-    // Flag for the monitor to change / Performance mode of the edge servers / Percentage of tasks within the task manager
-    // Minimum wait time for a new task be executed / Total number of not executed tasks
+    //performance flag for the monitor to change, percentage of tasks within the task manager,
+    //minimum wait time for a new task be executed, total number of not executed tasks
     int performance_change_flag, tm_percentage, min_wait_time, n_not_executed_tasks;
-    // Average time of response by a task
+    //average time of response by a task
     float avg_res_time;
     pthread_mutex_t dispatcher_mutex, monitor_mutex, performance_changed_mutex;
     pthread_cond_t dispatcher_cond, monitor_cond, performance_changed_cond;
@@ -110,62 +110,42 @@ void set_edge_server(EdgeServer* es, int n){
 }
 
 int get_performance_change_flag(){
-	//return the performance change flag which is the 
-	//first integer stored in the shared memory
 	return shared_var->performance_change_flag;
 }
 
 void set_performance_change_flag(int pcf){
-	//store the new performance change flag which is the 
-	//first integer stored in the shared memory
 	shared_var->performance_change_flag = pcf;
 }
 
 int get_tm_percentage(){
-    //return the percentage of tasks within the task manager
-    //which is the second integer stored in the shared memory
     return shared_var->tm_percentage;
 }
 
 void set_tm_percentage(int p){
-    //store the new percentage of tasks within the task manager
-    //which is the second integer stored in the shared memory
     shared_var->tm_percentage = p;
 }
 
 int get_min_wait_time(){
-    //return the minimum wait time for a new task be executed
-    //which is the third integer stored in the shared memory
     return shared_var->min_wait_time;
 }
 
 void set_min_wait_time(int t){
-    //store the minimum wait time for a new task be executed
-    //which is the third integer stored in the shared memory
     shared_var->min_wait_time = t;
 }
 
 int get_n_not_executed_tasks(){
-    //return the total number of not executed tasks
-    //which is the fifth integer stored in the shared memory
     return shared_var->n_not_executed_tasks;
 }
 
 void set_n_not_executed_tasks(int n){
-    //store the total number of not executed tasks
-    //which is the fifth integer stored in the shared memory
     shared_var->n_not_executed_tasks = n;
 }
 
 float get_avg_res_time(){
-    //return the average time of response by a task
-    //which is a float stored in the shared memory
     return shared_var->avg_res_time;
 }
 
 void set_avg_res_time(float t){
-    //store the average time of response by a task
-    // which is a float stored in the shared memory
     shared_var->avg_res_time = t;
 }
 

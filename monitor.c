@@ -13,7 +13,6 @@
 #include "log.h"
 #include "shared_memory.h"
 
-//sigset_t mon_block_set;
 int ch_perf, old_perf, mon_leave_flag = 0;
 char msg[MSG_LEN];
 pthread_t mon_thread;
@@ -24,7 +23,7 @@ int change_performance(){
 	shm_r_lock();
     tm_percentage = get_tm_percentage();
     min_wait_time = get_min_wait_time();
-    
+    //check if it is needed to change the performance flag
     if(tm_percentage > 80 && min_wait_time > max_wait){
     	shm_r_unlock();
     	return 2;
@@ -43,6 +42,7 @@ void *monitor_thread(){
 	while(1){
 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
     	pthread_mutex_lock(monitor_mutex);
+    	//check if it is needed to change the performance flag
     	while(!(ch_perf = change_performance()) || ch_perf == old_perf || mon_leave_flag){
     		if(mon_leave_flag){
     			pthread_mutex_unlock(monitor_mutex);
@@ -61,6 +61,7 @@ void *monitor_thread(){
         sprintf(msg, "MONITOR: CHANGED PERFORMANCE FLAG TO %d", ch_perf);
         log_write(msg);
         
+        //notify edge servers that the performance flag has been changed
         pthread_mutex_lock(performance_changed_mutex);
         pthread_cond_broadcast(performance_changed_cond);
         pthread_mutex_unlock(performance_changed_mutex);
@@ -86,10 +87,6 @@ void mon_termination_handler(int signum) {
     	pthread_join(mon_thread, NULL);
         exit(0);
     }
-    //unexpected signal received
-    char log[MSG_LEN];
-    sprintf(log, "MONITOR RECEIVED SIGNAL %d", signum);
-    log_write(log);
 }
 
 void monitor(){
@@ -113,9 +110,9 @@ void monitor(){
 	
 	old_perf = 1;
 	
-	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
-		
 	pthread_create(&mon_thread, NULL, monitor_thread, NULL);
-
+	
+	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+	
 	pthread_join(mon_thread, NULL);
 }

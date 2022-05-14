@@ -49,6 +49,7 @@ void *vcpu(void *vcpu_id){
 	int id = *((int*)vcpu_id);
 	VCPUTask t;
 	
+	//block all signals in this thread
 	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
 	
 	while(1){
@@ -234,7 +235,9 @@ void * enter_maintenance(void * t){
         	msg.msg_type = es_msg_type;
         	strcpy(msg.msg_text, "ES_START");
         	msgsnd(mqid, &msg, sizeof(Message) - sizeof(long), 0);
-        	sprintf(log, "%s: CHANGED PERFORMANCE TO 0\n%s: STARTING MAINTENANCE", es_name, es_name); 
+        	sprintf(log, "%s: CHANGED PERFORMANCE TO 0", es_name); 
+        	log_write(log);
+        	sprintf(log, "%s: STARTING MAINTENANCE", es_name);
         	log_write(log);
         }else if(strcmp(msg.msg_text, "END") == 0){
         	//end maintenance, reactivating the vcpus and restoring the performance level
@@ -266,9 +269,7 @@ void * enter_maintenance(void * t){
         	
         	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
         }else printf("INVALID MESSAGE RECEIVED FROM MAINTENANCE MANAGER |%s|\n", msg.msg_text);
-        
     }
-
     pthread_exit(NULL);
 }
 
@@ -377,10 +378,6 @@ void es_termination_handler(int signum) {
         #endif
         exit(0);
     }
-    //unexpected signal received
-    char log[MSG_LEN];
-    sprintf(log, "%s RECEIVED SIGNAL %d", es_name, signum);
-    log_write(log);
 }
 
 
@@ -392,11 +389,10 @@ int edge_server(int es_n){
     es_new_action.sa_flags = 0;
     es_new_action.sa_mask = block_set;
     es_new_action.sa_handler = &es_termination_handler;
-
     sigaction(SIGUSR1,&es_new_action,NULL);
     
+    //ignore SIGINT and SIGTSTP (these are handled by the system manager)
     es_new_action.sa_handler = SIG_IGN;
-    
     sigaction(SIGINT, &es_new_action, NULL);
     sigaction(SIGTSTP, &es_new_action, NULL);
 	

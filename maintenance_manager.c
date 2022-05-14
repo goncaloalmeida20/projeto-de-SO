@@ -47,10 +47,6 @@ void mm_signal_handler(int signum) {
     	log_write("MAINTENANCE MANAGER CLOSING");
         exit(0);
     }
-    //unexpected signal received
-    char log[MSG_LEN];
-    sprintf(log, "MAINTENANCE MANAGER RECEIVED SIGNAL %d", signum);
-    log_write(log);
 }
 
 void * maintenance(void *t){
@@ -152,13 +148,13 @@ void maintenance_manager(int mq_id, int es_num) {
     mm_thread = (pthread_t *) malloc(sizeof(pthread_t) * edge_server_number);
     id = (int *) malloc(sizeof(int) * edge_server_number);
 	
-	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
-	
 	//create one thread to manage each edge server
     for(i = 0; i < edge_server_number; i++){
         id[i] = i + 1;
         pthread_create(&mm_thread[i], NULL, maintenance, &id[i]);
     }
+	
+	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
 	
     for(i = 0; i < edge_server_number; i++) pthread_join(mm_thread[i], NULL);
     clean_mm_resources();

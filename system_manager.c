@@ -83,6 +83,36 @@ int read_file(FILE *fp){
     }
 }
 
+void store_edge_servers_in_shm(){
+	shm_w_lock();
+	#ifdef DEBUG
+	printf("Saving the edge servers data and performance change flag in the shared memory...\n");
+	#endif
+	// Save the edge servers data in the shared memory 
+	for(int i = 0; i < edge_server_number; i++){
+		#ifdef DEBUG
+		printf("Setting edge server %s with number %d...\n", edge_servers[i].name, i+1);
+		#endif
+		set_edge_server(&edge_servers[i], i+1);
+	}
+
+	// Set the performance change flag to 0 (normal)
+	set_performance_change_flag(0);
+	shm_w_unlock();
+	free(edge_servers);
+	
+	#ifdef DEBUG
+	shm_r_lock();
+	printf("Checking shared memory contents...\n");
+	for(i = 0; i < edge_server_number; i++){
+		EdgeServer es = get_edge_server(i+1);
+		printf("Edge Server %d: %s %d %d\n", i+1, es.name, es.vcpu[0].processing_capacity, es.vcpu[1].processing_capacity);
+	}
+	printf("Performance change flag: %d\n", get_performance_change_flag());
+	shm_r_unlock();
+	#endif
+}
+
 void create_mutexes_conds(){
 	monitor_mutex = get_monitor_mutex();
     // Initialize monitor mutex
@@ -170,14 +200,12 @@ void signal_handler(int signum) {
 }
 
 int main(int argc, char *argv[]){
-	int i;
-
     if(argc != 2){
         printf("WRONG NUMBER OF PARAMETERS\n");
         exit(1);
     }
     
-    sigfillset(&block_set); // will have all possible signals blocked when our handler is called
+    sigfillset(&block_set); // will have all possible signals blocked when the handler is called
     sigprocmask(SIG_BLOCK, &block_set, NULL);
 
     
@@ -187,8 +215,10 @@ int main(int argc, char *argv[]){
     create_log();
     
   
-    // Read from config file
+    //read from config file
     if(read_file(fopen(argv[1], "r")) < 0) {
+    	log_write("ERROR READING THE CONFIG FILE\nSIMULATOR CLOSING");
+    	close_log();
         exit(1);
     }
 
@@ -197,55 +227,32 @@ int main(int argc, char *argv[]){
 	#ifdef DEBUG
 	printf("Creating shared memory...\n");
     #endif
-	// Shared memory created
+	//create the shared memory
     if(create_shm() < 0) {
+    	log_write("Error creating shared memory");
         exit(1);
     }
 	
 	create_mutexes_conds();
 
-    // Creates the named pipe if it doesn't exist yet
+    //create the task pipe
     unlink(PIPE_NAME);
     if (mkfifo(PIPE_NAME, O_CREAT|O_EXCL|0600)<0) {
-        perror("Cannot create pipe: ");
+        close_shm();
+    	log_write("ERROR CREATING THE TASK PIPE\nSIMULATOR CLOSING");
+    	close_log();
         exit(1);
     }
 
-	shm_w_lock();
-
-    // Create Message Queue
+    //create the message queue
     if ((mqid = msgget(IPC_PRIVATE, IPC_CREAT|0777)) < 0)
     {
         log_write("ERROR CREATING MESSAGE QUEUE");
         exit(0);
     }
-
-	#ifdef DEBUG
-	printf("Saving the edge servers data and performance change flag in the shared memory...\n");
-	#endif
-	// Save the edge servers data in the shared memory 
-	for(i = 0; i < edge_server_number; i++){
-		#ifdef DEBUG
-		printf("Setting edge server %s with number %d...\n", edge_servers[i].name, i+1);
-		#endif
-		set_edge_server(&edge_servers[i], i+1);
-	}
-
-	// Set the performance change flag to 0 (normal)
-	set_performance_change_flag(0);
-	shm_w_unlock();
-	free(edge_servers);
 	
-	#ifdef DEBUG
-	shm_r_lock();
-	printf("Checking shared memory contents...\n");
-	for(i = 0; i < edge_server_number; i++){
-		EdgeServer es = get_edge_server(i+1);
-		printf("Edge Server %d: %s %d %d\n", i+1, es.name, es.vcpu[0].processing_capacity, es.vcpu[1].processing_capacity);
-	}
-	printf("Performance change flag: %d\n", get_performance_change_flag());
-	shm_r_unlock();
-	#endif
+	store_edge_servers_in_shm();
+	
 
     // Create Task Manager
     if((task_manager_pid = fork()) == 0) {
