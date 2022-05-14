@@ -130,7 +130,7 @@ void maintenance_manager(int mq_id, int es_num) {
     mm_new_action.sa_handler = &mm_signal_handler;
     sigaction(SIGUSR1,&mm_new_action,NULL);
     
-    //ignore SIGINT and SIGTSTP
+    //ignore SIGINT and SIGTSTP (these are handled by the system manager)
     mm_new_action.sa_handler = SIG_IGN;
     sigaction(SIGINT, &mm_new_action, NULL);
     sigaction(SIGTSTP, &mm_new_action, NULL);

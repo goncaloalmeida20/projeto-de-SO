@@ -90,17 +90,14 @@ void mon_termination_handler(int signum) {
 }
 
 void monitor(){
-	//sigfillset(&mon_block_set); // will have all possible signals blocked when our handler is called
-
-    //define a handler for SIGINT; when entered all possible signals are blocked
+    //define a handler for SIGUSR1
     mon_new_action.sa_flags = 0;
     mon_new_action.sa_mask = block_set;
     mon_new_action.sa_handler = &mon_termination_handler;
-
     sigaction(SIGUSR1,&mon_new_action,NULL);
     
+    //ignore SIGINT and SIGTSTP (these are handled by the system manager)
     mon_new_action.sa_handler = SIG_IGN;
-    
     sigaction(SIGINT, &mon_new_action, NULL);
     sigaction(SIGTSTP, &mon_new_action, NULL);
 	
