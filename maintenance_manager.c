@@ -84,13 +84,13 @@ void * maintenance(void *t){
         //receive confirmation from edge server
         msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), es_msg_type, 0);
         if(strcmp(msg.msg_text, "ES_ABORT") == 0){
-        	sprintf(log, "MAITENANCE MANAGER RECEIVED ABORT MESSAGE FROM EDGE SERVER %d", es_id);
+        	sprintf(log, "MAINTENANCE MANAGER RECEIVED ABORT MESSAGE FROM EDGE SERVER %d", es_id);
         	log_write(log);
         	sem_post(&maintenance_counter);
         	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
         	break;
         } else if(strcmp(msg.msg_text, "ES_START") != 0){
-        	sprintf(log, "MAITENANCE MANAGER RECEIVED WRONG MESSAGE FROM EDGE SERVER %d", es_id);
+        	sprintf(log, "MAINTENANCE MANAGER RECEIVED WRONG MESSAGE FROM EDGE SERVER %d", es_id);
         	log_write(log);
         	sem_post(&maintenance_counter);
         	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
@@ -106,7 +106,7 @@ void * maintenance(void *t){
         //receive confirmation from edge server
         msgrcv(mqid, &msg, sizeof(Message) - sizeof(long), es_msg_type, 0);
         if(strcmp(msg.msg_text, "ES_END") != 0){
-        	sprintf(log, "MAITENANCE MANAGER RECEIVED WRONG MESSAGE FROM EDGE SERVER %d\n", es_id);
+        	sprintf(log, "MAINTENANCE MANAGER RECEIVED WRONG MESSAGE FROM EDGE SERVER %d\n", es_id);
         	log_write(log);
         }
         
