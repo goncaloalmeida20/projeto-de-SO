@@ -207,6 +207,13 @@ int main(int argc, char *argv[]){
     
     sigfillset(&block_set); // will have all possible signals blocked when the handler is called
     sigprocmask(SIG_BLOCK, &block_set, NULL);
+    
+    sigset_t no_sigint_sigtstp = block_set;
+    sigdelset(&no_sigint_sigtstp, SIGINT);
+    sigdelset(&no_sigint_sigtstp, SIGTSTP);
+    
+    block_set_no_sigusr1 = no_sigint_sigtstp;
+    sigdelset(&block_set_no_sigusr1, SIGUSR1);
 
     
     #ifdef DEBUG
@@ -237,7 +244,7 @@ int main(int argc, char *argv[]){
 
     //create the task pipe
     unlink(PIPE_NAME);
-    if (mkfifo(PIPE_NAME, O_CREAT|O_EXCL|0600)<0) {
+    if (mkfifo(PIPE_NAME, O_CREAT|O_EXCL|0666)<0) {
         close_shm();
     	log_write("ERROR CREATING THE TASK PIPE\nSIMULATOR CLOSING");
     	close_log();
@@ -284,8 +291,11 @@ int main(int argc, char *argv[]){
 
     sigaction(SIGINT,&new_action,NULL);
     sigaction(SIGTSTP,&new_action,NULL);
-	
+    
 	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+	
+	sigprocmask(SIG_BLOCK, &no_sigint_sigtstp, NULL);
+	
 	
     wait_processes();
     exit(0);

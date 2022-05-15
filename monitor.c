@@ -91,7 +91,7 @@ void mon_termination_handler(int signum) {
 
 void monitor(){
     //define a handler for SIGUSR1
-    mon_new_action.sa_flags = 0;
+    mon_new_action.sa_flags = SA_RESTART;
     mon_new_action.sa_mask = block_set;
     mon_new_action.sa_handler = &mon_termination_handler;
     sigaction(SIGUSR1,&mon_new_action,NULL);
@@ -110,6 +110,8 @@ void monitor(){
 	pthread_create(&mon_thread, NULL, monitor_thread, NULL);
 	
 	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+	
+	sigprocmask(SIG_BLOCK, &block_set_no_sigusr1, NULL);
 	
 	pthread_join(mon_thread, NULL);
 }

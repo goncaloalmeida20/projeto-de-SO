@@ -26,7 +26,7 @@ pthread_mutex_t *monitor_mutex;
 pthread_cond_t *monitor_cond;
 pthread_mutex_t *performance_changed_mutex;
 pthread_cond_t *performance_changed_cond;
-sigset_t block_set;
+sigset_t block_set, block_set_no_sigusr1;
 
 int create_shm();
 void close_shm();

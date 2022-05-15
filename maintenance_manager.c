@@ -26,7 +26,6 @@
 pthread_t * mm_thread;
 int mqid, edge_server_number, * id;
 sem_t maintenance_counter;
-sigset_t mm_block_set;
 struct sigaction mm_new_action;
 
 void clean_mm_resources(){
@@ -155,6 +154,8 @@ void maintenance_manager(int mq_id, int es_num) {
     }
 	
 	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+	
+	sigprocmask(SIG_BLOCK, &block_set_no_sigusr1, NULL);
 	
     for(i = 0; i < edge_server_number; i++) pthread_join(mm_thread[i], NULL);
     clean_mm_resources();

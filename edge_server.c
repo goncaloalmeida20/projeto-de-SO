@@ -24,15 +24,14 @@
 #include "maintenance_manager.h"
 
 
-int edge_server_n, vcpu_start[2], es_leave_flag = 0;
-int vcpu_capacity[2], maintenance_start = 0, ids[2];
+int edge_server_n, maintenance_start = 0, es_leave_flag = 0;
+int vcpu_capacity[2], vcpu_start[2], ids[2];
 Message mm_msg;
 VCPUTask current_task;
 char es_name[NAME_LEN];
 pthread_mutex_t tasks_mutex = PTHREAD_MUTEX_INITIALIZER, maintenance_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t free_cond = PTHREAD_COND_INITIALIZER, tasks_cond = PTHREAD_COND_INITIALIZER;
 pthread_t vcpu_thread[2], maintenance_thread, performance_thread, task_thread;
-sigset_t es_block_set;
 struct sigaction es_new_action;
 
 double get_current_time(){
@@ -385,8 +384,8 @@ int edge_server(int es_n){
 	char msg[MSG_LEN];
 	edge_server_n = es_n;
 
-    //define a handler for SIGUSR1; when entered all possible signals are blocked
-    es_new_action.sa_flags = 0;
+    //define a handler for SIGUSR1
+    es_new_action.sa_flags = SA_RESTART;
     es_new_action.sa_mask = block_set;
     es_new_action.sa_handler = &es_termination_handler;
     sigaction(SIGUSR1,&es_new_action,NULL);
@@ -419,8 +418,6 @@ int edge_server(int es_n){
         log_write(inf);
     }
 	
-	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
-	
 	for(int i = 0; i < 2; i++){
 		ids[i] = i;
 		pthread_create(&vcpu_thread[i], NULL, vcpu, &ids[i]);
@@ -430,6 +427,9 @@ int edge_server(int es_n){
 	pthread_create(&performance_thread, NULL, check_performance, NULL);
 	pthread_create(&task_thread, NULL, receive_tasks, NULL);
 	
+	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+	
+	sigprocmask(SIG_BLOCK, &block_set_no_sigusr1, NULL);
 	
     for(int i = 0; i < 2; i++) pthread_join(vcpu_thread[i], NULL);
     pthread_join(task_thread, NULL);

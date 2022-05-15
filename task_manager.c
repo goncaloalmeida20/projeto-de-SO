@@ -25,13 +25,13 @@ typedef struct{
     int priority;
 }Task;
 
-int queue_size, task_pipe_fd, scheduler_start = 0, tm_leave_flag = 0, rt_reading;
+int queue_size, task_pipe_fd, scheduler_start = 0, tm_leave_flag = 0;
 Task *queue;
 pid_t *edge_servers_pid;
 pthread_t scheduler_thread, dispatcher_thread, read_thread;
 pthread_mutexattr_t mutexattr;
 pthread_condattr_t condattr;
-pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER, end_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t scheduler_cond = PTHREAD_COND_INITIALIZER;
 struct sigaction tm_new_action;
 
@@ -408,9 +408,7 @@ void *read_from_task_pipe(){
 	pthread_sigmask(SIG_BLOCK, &block_set, NULL);
 	while(1){
 		//read message from the named pipe
-		rt_reading = 1;
 		if((read_len = read(task_pipe_fd, msg, MSG_LEN)) > 0){
-			rt_reading = 0;
 			pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 			msg[read_len] = '\0';
 			#ifdef DEBUG_TM
@@ -586,7 +584,7 @@ int task_manager(){
 	}
 	
 	//define a handler for SIGUSR1
-    tm_new_action.sa_flags = 0;
+    tm_new_action.sa_flags = SA_RESTART;
     tm_new_action.sa_mask = block_set;
     tm_new_action.sa_handler = &tm_termination_handler;
     sigaction(SIGUSR1,&tm_new_action,NULL);
@@ -596,15 +594,17 @@ int task_manager(){
     sigaction(SIGINT, &tm_new_action, NULL);
     sigaction(SIGTSTP, &tm_new_action, NULL);
     
-	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
-	
 	//create scheduler thread
 	pthread_create(&scheduler_thread, NULL, scheduler, NULL);
 	//create dispatcher thread
 	pthread_create(&dispatcher_thread, NULL, dispatcher, NULL);
 	//create the thread that will read from the task pipe
 	pthread_create(&read_thread, NULL, read_from_task_pipe, NULL);
-
+	
+	sigprocmask(SIG_UNBLOCK, &block_set, NULL);
+	
+	sigprocmask(SIG_BLOCK, &block_set_no_sigusr1, NULL);
+	
 	pthread_join(read_thread, NULL);
 	pthread_join(scheduler_thread, NULL);
 	pthread_join(dispatcher_thread, NULL);

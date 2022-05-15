@@ -37,11 +37,16 @@ int shmid, n_readers = 0;
 
 int create_shm_sems(){
 	sem_unlink(SHM_MUTEX);
-	if((shm_mutex = sem_open(SHM_MUTEX,O_CREAT|O_EXCL,0700,1)) == SEM_FAILED)	
+	if((shm_mutex = sem_open(SHM_MUTEX,O_CREAT|O_EXCL,0700,1)) == SEM_FAILED){
+		log_write("ERROR CREATING SHM MUTEX");
 		return -1;
+	}	
+		
 	sem_unlink(STOP_WRITERS);
-	if((stop_writers = sem_open(STOP_WRITERS,O_CREAT|O_EXCL,0700,1)) == SEM_FAILED)	
+	if((stop_writers = sem_open(STOP_WRITERS,O_CREAT|O_EXCL,0700,1)) == SEM_FAILED){
+		log_write("ERROR CREATING SHM STOP WRITERS SEMAPHORE");
 		return -1;
+	}		
 	return 0;
 }
 
@@ -213,6 +218,6 @@ void close_shm_sems(){
 //clean up resources used
 void close_shm(){
 	close_shm_sems();
-	shmctl(shmid, IPC_RMID, NULL);
 	shmdt(shared_var);
+	shmctl(shmid, IPC_RMID, NULL);
 }
