@@ -176,6 +176,7 @@ void *receive_tasks(){
 		#ifdef DEBUG_ES
 		printf("%s: SENDING SIGNAL\n", es_name);
 		#endif
+		//notify task manager that the server state has been updated
 		pthread_mutex_lock(dispatcher_mutex);
 		pthread_cond_signal(dispatcher_cond);
 		pthread_mutex_unlock(dispatcher_mutex);
@@ -361,6 +362,7 @@ void es_termination_handler(int signum) {
     	pthread_mutex_lock(performance_changed_mutex);
     	pthread_cond_broadcast(performance_changed_cond);
     	pthread_mutex_unlock(performance_changed_mutex);
+    	
     	
     	for(int i = 0; i < 2; i++) pthread_cancel(vcpu_thread[i]);
     	pthread_cancel(task_thread);

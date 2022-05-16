@@ -28,8 +28,8 @@
 #define N_PROCESSES 3
 
 EdgeServer * edge_servers;
-int task_pipe_fd; // Task Manager, Monitor and Maintenance Manager
-pid_t task_manager_pid, monitor_pid, maintenance_manager_pid; 
+int task_pipe_fd; 
+pid_t task_manager_pid, monitor_pid, maintenance_manager_pid; // Task Manager, Monitor and Maintenance Manager
 pthread_mutexattr_t monitor_attrmutex;
 pthread_condattr_t monitor_attrcondv;
 pthread_mutexattr_t perf_ch_attrmutex;
