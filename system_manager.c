@@ -192,14 +192,8 @@ void signal_handler(int signum) {
         exit(0);
     }
     else if(signum == SIGTSTP){ //show stats
-    	sigprocmask(SIG_BLOCK, &block_set, NULL);
     	log_write("SIGNAL SIGTSTP RECEIVED");
         print_stats();
-        sigprocmask(SIG_UNBLOCK, &block_set, NULL);
-    }else{
-    	char msg[MSG_LEN];
-    	sprintf(msg, "RECEIVED SIGNAL %d\n", signum);
-    	log_write(msg);
     }
 }
 
