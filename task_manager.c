@@ -504,8 +504,12 @@ void tm_termination_handler(int signum) {
     		printf("TM killing %d\n", i+1);
     		#endif
     		kill(edge_servers_pid[i], SIGUSR1);
+    	}
+    	
+    	for(i = 0; i < edge_server_number; i++) {
     		wait(NULL);
     	}
+    	
     	for(i = 0; i < queue_size; i++){
     		shm_w_lock();
 			set_n_not_executed_tasks(get_n_not_executed_tasks() + 1);
@@ -520,10 +524,6 @@ void tm_termination_handler(int signum) {
         #endif
         exit(0);
     }
-    //unexpected signal received
-    char log[MSG_LEN];
-    sprintf(log, "TASK MANAGER RECEIVED SIGNAL %d", signum);
-    log_write(log);
 }
 
 int task_manager(){

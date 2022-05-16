@@ -181,10 +181,14 @@ void wait_processes(){
 void signal_handler(int signum) {
     if(signum == SIGINT){ //close simulator
     	log_write("SIGNAL SIGINT RECEIVED");
-    	kill(task_manager_pid, SIGUSR1);
-    	kill(monitor_pid, SIGUSR1);
     	kill(maintenance_manager_pid, SIGUSR1);
-        wait_processes();
+    	wait(NULL);
+    	kill(monitor_pid, SIGUSR1);
+    	wait(NULL);
+    	kill(task_manager_pid, SIGUSR1);
+    	wait(NULL);
+    	
+        clean_resources();
         exit(0);
     }
     else if(signum == SIGTSTP){ //show stats

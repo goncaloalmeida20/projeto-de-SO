@@ -213,7 +213,6 @@ void * enter_maintenance(void * t){
         	this.performance_level = 0;
         	set_edge_server(&this, edge_server_n);
         	shm_w_unlock();
-        	
         	pthread_mutex_lock(&tasks_mutex);
         	// Wait until vcpus finish all tasks
         	while(!vcpus_finished_tasks() || es_leave_flag == 1){
@@ -268,7 +267,7 @@ void * enter_maintenance(void * t){
         	log_write(log);
         	
         	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-        }else printf("INVALID MESSAGE RECEIVED FROM MAINTENANCE MANAGER |%s|\n", msg.msg_text);
+        }
     }
     pthread_exit(NULL);
 }
